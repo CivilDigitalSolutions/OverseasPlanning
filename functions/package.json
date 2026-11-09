@@ -1,0 +1,27 @@
+{
+  "name": "overseas-planning-functions",
+  "version": "0.1.0",
+  "private": true,
+  "main": "lib/index.js",
+  "engines": {
+    "node": "20"
+  },
+  "scripts": {
+    "build": "tsc",
+    "lint": "tsc --noEmit",
+    "test": "npm run build && mocha --timeout 15000 test/unit.spec.js",
+    "test:rules": "mocha --timeout 30000 test/rules.spec.js",
+    "test:storage": "mocha --timeout 30000 test/storage.spec.js"
+  },
+  "dependencies": {
+    "@simplewebauthn/server": "^14.1.0",
+    "firebase-admin": "^13.10.0",
+    "firebase-functions": "^6.6.0"
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "^4.0.1",
+    "firebase": "^11.10.0",
+    "mocha": "^10.8.2",
+    "typescript": "^5.9.3"
+  }
+}

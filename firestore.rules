@@ -1,0 +1,210 @@
+rules_version = '2';
+
+// Overseas Planning — Firestore security rules. Data model: docs/SPEC.md §4.
+//
+// Principles (carried over from TrackLink):
+//  * Never weaken these rules to make a feature work — fix the data model or use a Cloud Function.
+//  * Access to a trip is decided from the trip document's memberUids (written ONLY by functions)
+//    or the HOST custom claim. Never by client-side filtering.
+//  * Everything except the caller's own profile needs a CONFIRMED email address.
+//  * Client writes are shape-checked (key allowlists, sizes) and server-time stamped.
+//  * Every rules change comes with tests (functions/test/rules.spec.js).
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---- helpers ------------------------------------------------------------------------------
+    function signedIn() { return request.auth != null; }
+    function verified() { return signedIn() && request.auth.token.email_verified == true; }
+    function isHost() { return verified() && request.auth.token.get('host', false) == true; }
+    function me() { return request.auth.uid; }
+    function d() { return request.resource.data; }
+    function changed() { return d().diff(resource.data).affectedKeys(); }
+    function optStr(m, k, max) { return !(k in m) || (m[k] is string && m[k].size() <= max); }
+    function reqStr(m, k, max) { return k in m && m[k] is string && m[k].size() >= 1 && m[k].size() <= max; }
+    function optList(m, k, max) { return !(k in m) || (m[k] is list && m[k].size() <= max); }
+    function isoDate(v) { return v is string && v.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$'); }
+    function optDate(m, k) { return !(k in m) || m[k] == '' || isoDate(m[k]); }
+
+    function trip(tripId) { return get(/databases/$(database)/documents/trips/$(tripId)).data; }
+    function onTrip(tripId) { return isHost() || (verified() && me() in trip(tripId).memberUids); }
+    function leaderUidOf(t) { return t.get('roles', {}).get('teamLeader', {}).get('uid', null); }
+    /** HOST or this trip's Team Leader: approves requests, moves status, reads all declarations. */
+    function isLead(tripId) { return isHost() || (verified() && leaderUidOf(trip(tripId)) == me()); }
+
+    // ---- users --------------------------------------------------------------------------------
+    match /users/{uid} {
+      allow read: if signedIn() && me() == uid;
+      // Profile only; roles live in custom claims and agreement fields are functions-only.
+      allow create, update: if signedIn() && me() == uid
+        && d().keys().hasOnly(['name', 'email', 'createdAt', 'lastAgreementAt', 'termsVersion', 'privacyVersion'])
+        && (request.method == 'create' ? !('lastAgreementAt' in d()) && !('termsVersion' in d()) && !('privacyVersion' in d())
+                                       : !changed().hasAny(['lastAgreementAt', 'termsVersion', 'privacyVersion']))
+        && reqStr(d(), 'name', 80) && optStr(d(), 'email', 254);
+      allow delete: if false;
+
+      // Terms + privacy agreement records: written by recordAgreement only, never editable.
+      match /agreements/{id} {
+        allow read: if signedIn() && me() == uid;
+        allow write: if false;
+      }
+      match /tripReads/{tripId} {
+        allow read: if signedIn() && me() == uid;
+        allow write: if verified() && me() == uid && d().keys().hasOnly(['readAt']) && d().readAt == request.time;
+      }
+    }
+
+    // ---- trip requests (the short form → HOST triage) -----------------------------------------
+    match /tripRequests/{id} {
+      allow read: if isHost() || (verified() && resource.data.requesterUid == me());
+      allow create: if verified()
+        && d().keys().hasOnly(['teamName', 'startDate', 'endDate', 'location', 'requesterUid', 'requesterName', 'requesterEmail', 'status', 'createdAt'])
+        && d().requesterUid == me() && d().requesterEmail == request.auth.token.email
+        && d().status == 'submitted' && d().createdAt == request.time
+        && reqStr(d(), 'teamName', 80) && reqStr(d(), 'location', 120) && optStr(d(), 'requesterName', 80)
+        && isoDate(d().startDate) && isoDate(d().endDate) && d().endDate >= d().startDate;
+      // HOST may decline; accepting happens in createTrip (it creates the trip in the same transaction).
+      allow update: if isHost() && resource.data.status == 'submitted'
+        && changed().hasOnly(['status', 'declineReason', 'decidedAt'])
+        && d().status == 'declined' && optStr(d(), 'declineReason', 500) && d().decidedAt == request.time;
+      allow delete: if false;
+    }
+
+    // ---- trips --------------------------------------------------------------------------------
+    match /trips/{tripId} {
+      allow read: if isHost() || (verified() && me() in resource.data.memberUids);
+      allow create, delete: if false; // createTrip only
+      allow update: if d().updatedAt == request.time && d().status in ['planning', 'live', 'archived'] && (
+        // HOST edits the overview. Roles / memberUids / pendingEmails are functions-only.
+        (isHost() && changed().hasOnly(['name', 'location', 'startDate', 'endDate', 'cyberRisk', 'cyberRationale', 'countryRisk', 'countryRationale', 'status', 'updatedAt'])
+          && reqStr(d(), 'name', 120) && reqStr(d(), 'location', 120) && isoDate(d().startDate) && isoDate(d().endDate)
+          && d().endDate >= d().startDate
+          && d().cyberRisk in ['Low', 'Medium', 'High', 'Critical'] && d().countryRisk in ['Low', 'Medium', 'High', 'Critical']
+          && optStr(d(), 'cyberRationale', 2000) && optStr(d(), 'countryRationale', 2000))
+        // The Team Leader moves the trip between Planning / Live / Archived.
+        || (verified() && leaderUidOf(resource.data) == me() && changed().hasOnly(['status', 'updatedAt'])));
+
+      match /members/{uid} {
+        allow read: if onTrip(tripId);
+        allow write: if false; // createTrip / addTripAccess / syncPendingAccess
+      }
+
+      // Flights, hotels, hire cars, assets — any member. Keys must match web/src/model.ts ITEM_SCHEMAS.
+      function itemKeys(coll) {
+        return coll == 'flights' ? ['airline', 'flightNumber', 'from', 'to', 'departAt', 'arriveAt', 'bookingRef', 'passengers', 'notes']
+          : coll == 'hotels' ? ['name', 'address', 'city', 'phone', 'checkIn', 'checkOut', 'bookingRef', 'guests', 'notes']
+          : coll == 'cars' ? ['company', 'vehicle', 'registration', 'pickUpLocation', 'pickUpAt', 'dropOffLocation', 'dropOffAt', 'bookingRef', 'drivers', 'notes']
+          : ['name', 'category', 'serialNumber', 'quantity', 'carriedBy', 'returned', 'notes'];
+      }
+      function validItem(coll, m) {
+        return m.keys().hasOnly(itemKeys(coll).concat(['createdBy', 'createdByName', 'createdAt', 'updatedAt']))
+          && optStr(m, 'notes', 2000) && optStr(m, 'createdByName', 80)
+          && optList(m, 'passengers', 100) && optList(m, 'guests', 100) && optList(m, 'drivers', 20)
+          && optStr(m, 'flightNumber', 20) && optStr(m, 'airline', 80) && optStr(m, 'from', 80) && optStr(m, 'to', 80)
+          && optStr(m, 'name', 120) && optStr(m, 'address', 400) && optStr(m, 'company', 80) && optStr(m, 'bookingRef', 40)
+          && (!('quantity' in m) || (m.quantity is int && m.quantity >= 0 && m.quantity <= 100000))
+          && (!('returned' in m) || m.returned is bool);
+      }
+      match /{coll}/{itemId} {
+        allow read: if coll in ['flights', 'hotels', 'cars', 'assets'] && onTrip(tripId);
+        allow create: if coll in ['flights', 'hotels', 'cars', 'assets'] && onTrip(tripId) && validItem(coll, d())
+          && d().createdBy == me() && d().createdAt == request.time && d().updatedAt == request.time;
+        allow update: if coll in ['flights', 'hotels', 'cars', 'assets'] && onTrip(tripId) && validItem(coll, d())
+          && d().createdBy == resource.data.createdBy && d().createdAt == resource.data.createdAt && d().updatedAt == request.time;
+        allow delete: if coll in ['flights', 'hotels', 'cars', 'assets'] && onTrip(tripId);
+      }
+
+      // Messages: everyone on the trip reads; you post as yourself and may delete your own.
+      match /messages/{id} {
+        allow read: if onTrip(tripId);
+        allow create: if onTrip(tripId) && d().keys().hasOnly(['senderUid', 'senderName', 'text', 'createdAt'])
+          && d().senderUid == me() && reqStr(d(), 'text', 4000) && optStr(d(), 'senderName', 80) && d().createdAt == request.time;
+        allow update: if false;
+        allow delete: if onTrip(tripId) && resource.data.senderUid == me();
+      }
+
+      // Attachment records; the file itself is in Storage at `path` (storage.rules).
+      match /attachments/{attId} {
+        allow read: if onTrip(tripId);
+        allow create: if onTrip(tripId)
+          && d().keys().hasOnly(['name', 'path', 'size', 'contentType', 'uploadedBy', 'uploadedByName', 'createdAt'])
+          && d().uploadedBy == me() && d().createdAt == request.time && reqStr(d(), 'name', 200) && optStr(d(), 'contentType', 120)
+          && optStr(d(), 'uploadedByName', 80) && d().size is int && d().size >= 0 && d().size <= 25 * 1024 * 1024
+          && d().path is string && d().path.matches('trips/' + tripId + '/attachments/' + attId + '/[^/]{1,120}');
+        allow update: if false;
+        allow delete: if onTrip(tripId) && (resource.data.uploadedBy == me() || isHost());
+      }
+
+      // Requests to the Team Leader, with approval: pending → approved | rejected → completed.
+      match /tlRequests/{id} {
+        allow read: if onTrip(tripId);
+        allow create: if onTrip(tripId)
+          && d().keys().hasOnly(['kind', 'title', 'details', 'quantity', 'amount', 'currency', 'neededBy', 'createdBy', 'createdByName', 'createdAt', 'status'])
+          && d().createdBy == me() && d().status == 'pending' && d().createdAt == request.time
+          && d().kind in ['resource', 'flight', 'hotel', 'car', 'asset', 'cash']
+          && reqStr(d(), 'title', 120) && optStr(d(), 'details', 2000) && optStr(d(), 'createdByName', 80) && optDate(d(), 'neededBy')
+          && (!('quantity' in d()) || (d().quantity is int && d().quantity >= 1 && d().quantity <= 1000))
+          && (!('amount' in d()) || (d().amount is number && d().amount > 0 && d().amount <= 1000000 && reqStr(d(), 'currency', 10)));
+        allow update: if
+          // Decide (Team Leader / HOST)
+          (isLead(tripId) && resource.data.status == 'pending' && d().status in ['approved', 'rejected']
+            && changed().hasOnly(['status', 'decidedBy', 'decidedByName', 'decidedAt', 'decisionNote'])
+            && d().decidedBy == me() && d().decidedAt == request.time && optStr(d(), 'decisionNote', 1000) && optStr(d(), 'decidedByName', 80))
+          // Complete an approved request (Team Leader / HOST)
+          || (isLead(tripId) && resource.data.status == 'approved' && d().status == 'completed'
+            && changed().hasOnly(['status', 'completedBy', 'completedByName', 'completedAt', 'response'])
+            && d().completedBy == me() && d().completedAt == request.time && optStr(d(), 'response', 1000) && optStr(d(), 'completedByName', 80))
+          // The creator resubmits a rejected request (decision fields removed)
+          || (onTrip(tripId) && resource.data.createdBy == me() && resource.data.status == 'rejected' && d().status == 'pending'
+            && changed().hasOnly(['status', 'decidedBy', 'decidedByName', 'decidedAt', 'decisionNote'])
+            && !d().keys().hasAny(['decidedBy', 'decidedByName', 'decidedAt', 'decisionNote']));
+        allow delete: if (onTrip(tripId) && resource.data.createdBy == me() && resource.data.status == 'pending') || isHost();
+      }
+
+      // Vaccination declarations (health data): your own, plus the Team Leader and HOST read all.
+      match /vaccinations/{uid} {
+        allow read: if (onTrip(tripId) && me() == uid) || isLead(tripId);
+        allow create, update: if onTrip(tripId) && me() == uid
+          && d().keys().hasOnly(['name', 'vaccines', 'notes', 'declared', 'declaredAt', 'updatedAt'])
+          && optStr(d(), 'name', 80) && d().vaccines is list && d().vaccines.size() <= 30 && optStr(d(), 'notes', 2000)
+          && d().declared is bool && d().updatedAt == request.time
+          && (d().declared ? d().declaredAt == request.time : !('declaredAt' in d()));
+        allow delete: if (onTrip(tripId) && me() == uid) || isHost();
+      }
+
+      // Debrief (one document): any member edits.
+      match /debrief/{docId} {
+        allow read: if onTrip(tripId);
+        allow write: if docId == 'current' && onTrip(tripId)
+          && d().keys().hasOnly(['wentWell', 'couldBeBetter', 'welfareConcerns', 'injuryRefs', 'reciprocityIssues', 'reciprocityDescription', 'updatedByUid', 'updatedByName', 'updatedAt'])
+          && optStr(d(), 'wentWell', 5000) && optStr(d(), 'couldBeBetter', 5000) && optStr(d(), 'welfareConcerns', 5000)
+          && d().injuryRefs is list && d().injuryRefs.size() <= 20 && d().reciprocityIssues is bool
+          && optStr(d(), 'reciprocityDescription', 5000) && d().updatedByUid == me() && d().updatedAt == request.time;
+      }
+
+      // Financial debrief: everyone on the trip reads; you edit your own; HOST may correct (owner kept).
+      function validFinance(m) {
+        return m.keys().hasOnly(['ownerUid', 'ownerName', 'date', 'category', 'description', 'amount', 'currency', 'paymentMethod', 'receiptRef', 'updatedAt'])
+          && reqStr(m, 'description', 200) && optStr(m, 'category', 40) && optDate(m, 'date') && optStr(m, 'ownerName', 80)
+          && m.amount is number && m.amount >= 0 && m.amount <= 1000000 && reqStr(m, 'currency', 10)
+          && optStr(m, 'paymentMethod', 40) && optStr(m, 'receiptRef', 60) && m.updatedAt == request.time;
+      }
+      match /financeEntries/{id} {
+        allow read: if onTrip(tripId);
+        allow create: if onTrip(tripId) && validFinance(d()) && d().ownerUid == me();
+        allow update: if onTrip(tripId) && validFinance(d()) && d().ownerUid == resource.data.ownerUid
+          && (resource.data.ownerUid == me() || isHost());
+        allow delete: if onTrip(tripId) && (resource.data.ownerUid == me() || isHost());
+      }
+      match /financeNotes/{uid} {
+        allow read: if onTrip(tripId);
+        allow write: if onTrip(tripId) && me() == uid && d().keys().hasOnly(['name', 'text', 'updatedAt'])
+          && optStr(d(), 'name', 80) && optStr(d(), 'text', 5000) && d().updatedAt == request.time;
+      }
+    }
+
+    // rateLimits, passkeys, passkeyChallenges, roleChanges and anything else: functions only.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

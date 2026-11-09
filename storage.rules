@@ -1,0 +1,25 @@
+rules_version = '2';
+
+// Trip attachments. Access mirrors firestore.rules: HOST, or a uid in the trip's memberUids, with
+// a confirmed email. Files are never public; downloads use Firebase's token URLs per request.
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /trips/{tripId}/attachments/{attId}/{fileName} {
+      function verified() { return request.auth != null && request.auth.token.email_verified == true; }
+      function isHost() { return verified() && request.auth.token.get('host', false) == true; }
+      function onTrip() {
+        return isHost() || (verified()
+          && request.auth.uid in firestore.get(/databases/(default)/documents/trips/$(tripId)).data.memberUids);
+      }
+      allow read: if onTrip();
+      allow create: if onTrip()
+        && request.resource.size <= 25 * 1024 * 1024
+        && request.resource.metadata.uploadedBy == request.auth.uid;
+      allow update: if false;
+      allow delete: if onTrip() && (resource.metadata.uploadedBy == request.auth.uid || isHost());
+    }
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

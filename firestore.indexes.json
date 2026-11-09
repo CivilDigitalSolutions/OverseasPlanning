@@ -1,0 +1,16 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "tripRequests",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "requesterUid", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": [
+    { "collectionGroup": "rateLimits", "fieldPath": "expireAt", "ttl": true, "indexes": [] },
+    { "collectionGroup": "passkeyChallenges", "fieldPath": "expireAt", "ttl": true, "indexes": [] }
+  ]
+}
