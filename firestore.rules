@@ -258,8 +258,8 @@ service cloud.firestore {
     }
 
     // ---- global contacts book (owner, 2026-11-10) ---------------------------------------------
-    // Everyone signed in with a confirmed email searches it and adds to it; the creator or HOST
-    // edits an entry; only HOST deletes one (trip records keep their own copy).
+    // Everyone signed in with a confirmed email searches it, adds to it and edits any entry
+    // (owner, 2026-11-10; duplicates are not merged); only HOST deletes one (trips keep a copy).
     function validContactFields(m) {
       return optStr(m, 'organisation', 120) && optStr(m, 'jobTitle', 80) && optStr(m, 'phone', 40) && optStr(m, 'country', 80)
         && (!('email' in m) || m.email == '' || (m.email is string && m.email.size() <= 254 && m.email.matches('^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$')));
@@ -272,7 +272,7 @@ service cloud.firestore {
       }
       allow read: if verified();
       allow create: if verified() && validContact() && d().createdBy == me() && d().createdAt == request.time;
-      allow update: if verified() && validContact() && (resource.data.createdBy == me() || isHost())
+      allow update: if verified() && validContact()
         && d().createdBy == resource.data.createdBy && d().createdAt == resource.data.createdAt;
       allow delete: if isHost();
     }

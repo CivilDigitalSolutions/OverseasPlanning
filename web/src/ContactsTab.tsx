@@ -32,7 +32,7 @@ export function ContactsTab({ ctx }: { ctx: TripCtx }) {
         <ul className="list">
           {list.map((c) => {
             const inBook = current(c);
-            const canEdit = !!inBook && (inBook.createdBy === ctx.session.uid || ctx.session.isHost);
+            const canEdit = !!inBook; // anyone signed in may edit a book contact
             return (
               <li key={c.id} className="card stack" style={{ gap: 6 }}>
                 <div className="row" style={{ alignItems: "flex-start" }}>

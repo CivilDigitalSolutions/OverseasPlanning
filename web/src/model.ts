@@ -202,8 +202,7 @@ const when = (v: unknown) => (s(v) ? s(v).replace("T", " ") : "");
 
 export const FLIGHT_STATUSES = ["Planning", "Requested", "Confirmed"] as const;
 export const FLIGHT_TYPES = ["Outbound", "Inbound", "Onward", "Connecting"] as const;
-/** TODO(owner): Economy is not in the list given — confirm whether it should be. */
-export const TRAVEL_CLASSES = ["First class", "Business class", "Premium economy", "Charter flight", "Other"] as const;
+export const TRAVEL_CLASSES = ["First class", "Business class", "Premium economy", "Economy", "Charter flight", "Other"] as const;
 export const DAY_NIGHT = ["Day", "Night"] as const;
 export const YES_NO = ["Yes", "No"] as const;
 
@@ -212,7 +211,7 @@ export interface Passenger { name: string; travelClass: string }
 /**
  * Day or night flight from the local departure/arrival times: Night when it departs 19:00–05:59 or
  * lands on a later date than it left (overnight); otherwise Day. "" without a departure time.
- * TODO(owner): confirm the definition (some policies use the length of the flight instead).
+ * Definition confirmed by the owner 2026-11-10.
  */
 export function dayNightFor(departAt: string, arriveAt: string): "" | "Day" | "Night" {
   const m = /^(\d{4}-\d{2}-\d{2})T(\d{2}):\d{2}/.exec(departAt);
@@ -642,7 +641,8 @@ export const PRIVACY_VERSION = "draft-0";
 // ---- Contacts book (owner, 2026-11-10) --------------------------------------------------------------
 // One global book (root `contacts`) everyone signed in can search and add to; each trip links the
 // contacts it uses (trips/{id}/contacts/{contactId}) with a role on that trip.
-// TODO(owner): confirm the fields, and who may edit or delete a contact in the global book.
+// Owner, 2026-11-10: everyone signed in may add or edit any contact; duplicates are NOT merged
+// (two entries with the same name stay separate). Only HOST deletes from the book.
 
 export interface ContactInput { name: string; organisation: string; jobTitle: string; email: string; phone: string; country: string; notes: string }
 export interface Contact extends ContactInput { id: string; createdBy: string; createdByName: string; updatedAtMs: number }

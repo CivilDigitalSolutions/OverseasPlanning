@@ -244,8 +244,11 @@ describe("contacts book", () => {
     await assertFails(addDoc(collection(outsider(), "contacts"), c("eve", { email: "not-an-email" })));
     await assertFails(addDoc(collection(outsider(), "contacts"), c("eve", { salary: 1 })));
   });
-  it("C2 creator or HOST edits; only HOST deletes", async () => {
-    await assertFails(updateDoc(doc(leader(), "contacts", "c1"), { phone: "+351 2", updatedAt: serverTimestamp() }));
+  it("C2 anyone verified edits (not the creator field); only HOST deletes", async () => {
+    await assertSucceeds(updateDoc(doc(leader(), "contacts", "c1"), { phone: "+351 2", updatedAt: serverTimestamp() }));
+    await assertSucceeds(updateDoc(doc(outsider(), "contacts", "c1"), { jobTitle: "Consul", updatedAt: serverTimestamp() }));
+    await assertFails(updateDoc(doc(unverified(), "contacts", "c1"), { phone: "+351 9", updatedAt: serverTimestamp() }));
+    await assertFails(updateDoc(doc(leader(), "contacts", "c1"), { phone: "x".repeat(41), updatedAt: serverTimestamp() }));
     await assertSucceeds(updateDoc(doc(member(), "contacts", "c1"), { phone: "+351 2", updatedAt: serverTimestamp() }));
     await assertSucceeds(updateDoc(doc(host(), "contacts", "c1"), { phone: "+351 3", updatedAt: serverTimestamp() }));
     await assertFails(updateDoc(doc(host(), "contacts", "c1"), { createdBy: "host", updatedAt: serverTimestamp() }));
