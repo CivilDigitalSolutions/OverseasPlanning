@@ -15,7 +15,7 @@ import { Privacy, Terms } from "./Legal";
 import { CreateTrip, NewRequest, RequestsPage } from "./Requests";
 import { TripDetail } from "./TripDetail";
 import { TripList } from "./TripList";
-import { syncPendingAccess, useRequests, useSession, type Session } from "./store";
+import { syncPendingAccess, upsertDirectory, useRequests, useSession, type Session } from "./store";
 
 export function App() {
   const path = usePath();
@@ -42,7 +42,11 @@ export function App() {
 
 function Shell({ session, pathname }: { session: Session; pathname: string }) {
   // Claim any trip access granted to this email before the account existed (once per session).
-  useEffect(() => { syncPendingAccess().catch(() => undefined); }, [session.uid]);
+  useEffect(() => {
+    syncPendingAccess().catch(() => undefined);
+    // Keep my entry in the in-app directory current, so people pickers can find me.
+    upsertDirectory(session).catch(() => undefined);
+  }, [session.uid]); // eslint-disable-line react-hooks/exhaustive-deps
   const requests = useRequests(session);
   const waiting = session.isHost ? (requests ?? []).filter((r) => r.status === "submitted").length : 0;
 
@@ -71,6 +75,7 @@ function Shell({ session, pathname }: { session: Session; pathname: string }) {
         <Link to="/" className="brand"><img src={ICON} alt="" /> Overseas Planning</Link>
         <span className="spacer" />
         {session.isHost && <span className="badge info">HOST</span>}
+        {session.isController && <span className="badge info">Controller</span>}
         <Link to="/account" className="icon-btn"><span className="sr-only">Account</span><span style={{ color: "#fff" }}><Icon name="user" /></span></Link>
         <button className="icon-btn" aria-label="Sign out" onClick={() => signOut(auth)}><span style={{ color: "#fff" }}><Icon name="logout" /></span></button>
       </header>

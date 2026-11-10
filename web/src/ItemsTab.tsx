@@ -5,7 +5,8 @@ import {
   CURRENCIES, FLIGHT_DECISION_LABEL, SPC_FLIGHT_KEYS, TRAVEL_CLASSES, TRIP_ROLES, addPerson, byClass, cleanItem, dayNightFor, displayValue, formatDuration,
   type FieldSpec, type FlightDecision, type ItemSchema, type Passenger,
 } from "./model";
-import { addItem, decideFlight, deleteItem, updateItem, useItems, useMembers, type Item } from "./store";
+import { PeoplePicker } from "./PeoplePicker";
+import { addItem, decideFlight, deleteItem, updateItem, useItems, useMembers, type DirectoryPerson, type Item } from "./store";
 import type { TripCtx } from "./TripDetail";
 
 const tms = (v: unknown) => (typeof v === "number" ? v : (v as { toMillis?: () => number } | null)?.toMillis?.() ?? 0);
@@ -186,20 +187,22 @@ function PeopleField({ f, value, onChange, suggestions, error }: { f: FieldSpec;
   );
 }
 
-/** People booked on a flight, each under a travel class; shown grouped by class. */
-function PassengersField({ f, value, onChange, suggestions, error }: { f: FieldSpec; value: Passenger[]; onChange: (v: Passenger[]) => void; suggestions: string[]; error?: string }) {
-  const [name, setName] = useState("");
+/**
+ * People booked on a flight, each under a travel class; shown grouped by class. People are picked
+ * from the in-app directory (or the trip's own people), which gives them access to the trip.
+ */
+function PassengersField({ f, value, onChange, tripPeople, error }: { f: FieldSpec; value: Passenger[]; onChange: (v: Passenger[]) => void; tripPeople: DirectoryPerson[]; error?: string }) {
   const [cls, setCls] = useState("");
   const [msg, setMsg] = useState("");
   const id = useId();
-  const add = (n: string) => {
-    const names = addPerson(value.map((p) => p.name), n, f.max);
-    if (names.length === value.length) { setName(""); return; }
+  const same = (a: Passenger, b: { uid?: string; name: string }) => (a.uid && b.uid ? a.uid === b.uid : a.name.toLowerCase() === b.name.toLowerCase());
+  const add = (p: DirectoryPerson) => {
     if (!cls) { setMsg("Choose a class first."); return; }
-    onChange([...value, { name: names[names.length - 1], travelClass: cls }]);
-    setName(""); setMsg("");
+    if (value.some((v) => same(v, p)) || value.length >= (f.max ?? 100)) return;
+    onChange([...value, { name: p.name, travelClass: cls, uid: p.uid, email: p.email }]);
+    setMsg("");
   };
-  const picks = suggestions.filter((sg) => !value.some((v) => v.name.toLowerCase() === sg.toLowerCase()));
+  const picks = tripPeople.filter((tp) => !value.some((v) => same(v, tp)));
   const groups = byClass(value);
   return (
     <div className="field">
@@ -220,20 +223,15 @@ function PassengersField({ f, value, onChange, suggestions, error }: { f: FieldS
           </div>
         </div>
       ))}
-      <div className="passenger-add">
-        <label htmlFor={`${id}-c`} className="sr-only">Class</label>
-        <select id={`${id}-c`} value={cls} onChange={(e) => { setCls(e.target.value); setMsg(""); }}>
-          <option value="">Class…</option>
-          {TRAVEL_CLASSES.map((c) => <option key={c} value={c}>{c}</option>)}
-        </select>
-        <label htmlFor={id} className="sr-only">Name</label>
-        <input id={id} type="text" placeholder="Add a name" value={name} maxLength={120}
-          onChange={(e) => setName(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); add(name); } }} />
-        <button type="button" className="btn secondary" aria-label="Add person" disabled={!name.trim()} onClick={() => add(name)}><Icon name="plus" /></button>
-      </div>
+      <label htmlFor={`${id}-c`} className="sr-only">Class</label>
+      <select id={`${id}-c`} value={cls} onChange={(e) => { setCls(e.target.value); setMsg(""); }}>
+        <option value="">Class…</option>
+        {TRAVEL_CLASSES.map((c) => <option key={c} value={c}>{c}</option>)}
+      </select>
+      <PeoplePicker label="Add person" exclude={value.map((v) => v.uid ?? "")} onPick={add} />
       {picks.length > 0 && (
         <div className="row" style={{ gap: 6 }}>
-          {picks.slice(0, 12).map((p) => <button key={p} type="button" className="chip pick" onClick={() => add(p)}><Icon name="plus" size={14} />{p}</button>)}
+          {picks.slice(0, 12).map((p) => <button key={p.uid} type="button" className="chip pick" onClick={() => add(p)}><Icon name="plus" size={14} />{p.name}</button>)}
         </div>
       )}
       {(msg || error) && <span className="error" role="alert">{msg || error}</span>}
@@ -257,6 +255,8 @@ function ItemForm({ ctx, schema, item, onClose, onPolicy }: { ctx: TripCtx; sche
     ...TRIP_ROLES.map((r) => ctx.trip.roles[r.key]?.name ?? ""),
     ...(members ?? []).map((m) => m.name),
   ].map((n) => n.trim()).filter(Boolean))];
+  // People already on the trip with an account: one-tap picks for flights.
+  const tripPeople: DirectoryPerson[] = (members ?? []).filter((m) => m.name).map((m) => ({ uid: m.uid, name: m.name, email: m.email }));
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
@@ -299,7 +299,7 @@ function ItemForm({ ctx, schema, item, onClose, onPolicy }: { ctx: TripCtx; sche
           if (f.type === "checkbox") return <Checkbox key={f.key} checked={raw[f.key] === true} onChange={(v) => set(f.key, v)}>{f.label}</Checkbox>;
           if (f.type === "select") return <SelectField key={f.key} label={label} value={str(f.key)} onChange={(v) => set(f.key, v)} options={f.options ?? []} error={errors[f.key]} />;
           if (f.type === "people") return <PeopleField key={f.key} f={f} value={(raw[f.key] as string[]) ?? []} suggestions={suggestions} error={errors[f.key]} onChange={(v) => set(f.key, v)} />;
-          if (f.type === "passengers") return <PassengersField key={f.key} f={f} value={(raw[f.key] as Passenger[]) ?? []} suggestions={suggestions} error={errors[f.key]} onChange={(v) => set(f.key, v)} />;
+          if (f.type === "passengers") return <PassengersField key={f.key} f={f} value={(raw[f.key] as Passenger[]) ?? []} tripPeople={tripPeople} error={errors[f.key]} onChange={(v) => set(f.key, v)} />;
           if (f.type === "money") return (
             <div key={f.key} className="grid2">
               <TextField label={label} inputMode="decimal" placeholder="0.00" value={str(f.key)} onChange={(v) => set(f.key, v)} error={errors[f.key]} />

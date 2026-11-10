@@ -245,7 +245,8 @@ export const TRAVEL_CLASSES = ["First class", "Business class", "Premium economy
 export const DAY_NIGHT = ["Day", "Night"] as const;
 export const YES_NO = ["Yes", "No"] as const;
 
-export interface Passenger { name: string; travelClass: string }
+/** A person booked on a flight. `uid`/`email` come from the directory picker and give them access to the trip. */
+export interface Passenger { name: string; travelClass: string; uid?: string; email?: string }
 
 /**
  * Day or night flight from the local departure/arrival times: Night when it departs 19:00–05:59 or
@@ -409,7 +410,10 @@ export function cleanItem(schema: ItemSchema, raw: Record<string, unknown>): { v
     }
     if (f.type === "passengers") {
       const list = (Array.isArray(v) ? v : []) as Passenger[];
-      const clean = list.map((p) => ({ name: s(p?.name).trim().replace(/\s+/g, " ").slice(0, 120), travelClass: s(p?.travelClass) })).filter((p) => p.name);
+      const clean: Passenger[] = list.map((p) => ({
+        name: s(p?.name).trim().replace(/\s+/g, " ").slice(0, 120), travelClass: s(p?.travelClass),
+        ...(typeof p?.uid === "string" && /^[A-Za-z0-9_-]{1,128}$/.test(p.uid) ? { uid: p.uid, email: s(p.email).slice(0, 254) } : {}),
+      })).filter((p) => p.name);
       if (clean.length > (f.max ?? 100)) errors[f.key] = `At most ${f.max} people.`;
       else if (clean.some((p) => !(TRAVEL_CLASSES as readonly string[]).includes(p.travelClass))) errors[f.key] = "Choose a class for each person.";
       value[f.key] = clean; continue;

@@ -19,13 +19,13 @@ function DemoStrip({ mode }: { mode: Backend["mode"] }) {
       <span className="badge warn">Demo</span>
       <span className="small">{mode === "shared" ? "Shared with everyone on this page" : "Saved in this browser only"}</span>
       <span style={{ flex: 1 }} />
-      {account && (
-        <label className="check small" style={{ alignItems: "center" }}>
-          <input type="checkbox" checked={account.host} disabled={busy}
-            onChange={async (e) => { setBusy(true); await be().patch(accountPath(), { host: e.target.checked }).finally(() => setBusy(false)); }} />
-          <span>Act as HOST</span>
+      {account && (["host", "controller"] as const).map((role) => (
+        <label key={role} className="check small" style={{ alignItems: "center" }}>
+          <input type="checkbox" checked={account[role]} disabled={busy}
+            onChange={async (e) => { setBusy(true); await be().patch(accountPath(), { [role]: e.target.checked }).finally(() => setBusy(false)); }} />
+          <span>{role === "host" ? "Act as HOST" : "Act as Controller"}</span>
         </label>
-      )}
+      ))}
     </div>
   );
 }

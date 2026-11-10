@@ -1,64 +1,72 @@
 import { onCall, HttpsError } from "firebase-functions/v2/https";
+import { onDocumentWritten } from "firebase-functions/v2/firestore";
 import { FieldValue, getFirestore } from "firebase-admin/firestore";
 import { assertHost, assertTripAccess, assertVerified } from "./lib/auth";
-import { MAX_MEMBERS, MAX_PENDING, verifiedUidFor, writeMember } from "./lib/access";
+import { MAX_MEMBERS, MAX_PENDING, verifiedUidFor } from "./lib/access";
+import { recomputeTripAccess } from "./lib/membership";
 import { rateLimit } from "./lib/rateLimit";
-import { cleanEmail, cleanText, isDocId } from "./lib/validate";
+import { cleanEmail, isDocId } from "./lib/validate";
+
+const isUid = (v: unknown): v is string => typeof v === "string" && /^[A-Za-z0-9_-]{1,128}$/.test(v);
 
 /**
- * Additional access (spec §6): anyone who can already see a trip may add someone by email.
- * A confirmed account gets access at once; otherwise the email waits in pendingEmails.
+ * Additional access (spec §6): anyone who can already see a trip adds someone — picked from the
+ * in-app directory (uid) or typed as an email. A confirmed account gets access at once; an email
+ * with no account waits until that person signs up.
  */
 export const addTripAccess = onCall(async (req) => {
   const { uid } = assertVerified(req);
   await rateLimit("addTripAccess", uid, 60, 3600_000);
   const tripId = req.data?.tripId;
   if (!isDocId(tripId)) throw new HttpsError("invalid-argument", "Unknown trip.");
-  const email = cleanEmail(req.data?.email);
-  if (!email) throw new HttpsError("invalid-argument", "Enter a valid email.");
-  await assertTripAccess(req, tripId);
-  const target = await verifiedUidFor(email);
-  const addedBy = { uid, name: cleanText(req.auth?.token.name, 80) || cleanText(req.auth?.token.email, 80) };
-  const name = cleanText(req.data?.name, 80) || target?.name || email.split("@")[0];
+  const trip = await assertTripAccess(req, tripId);
   const db = getFirestore();
-  const ref = db.collection("trips").doc(tripId);
-  return db.runTransaction(async (tx) => {
-    const t = await tx.get(ref);
-    const members: string[] = t.get("memberUids") ?? [];
-    const pending: string[] = t.get("pendingEmails") ?? [];
-    if (target) {
-      if (members.includes(target.uid)) return { status: "already" };
-      if (members.length >= MAX_MEMBERS) throw new HttpsError("resource-exhausted", "This trip has the maximum number of people.");
-      tx.update(ref, { memberUids: FieldValue.arrayUnion(target.uid), pendingEmails: FieldValue.arrayRemove(email) });
-      writeMember(tx, ref, target.uid, name, email, addedBy);
-      return { status: "added" };
-    }
-    if (pending.includes(email)) return { status: "already" };
+
+  let targetUid: string | null = null;
+  let email: string | null = null;
+  if (isUid(req.data?.uid)) {
+    const dir = await db.collection("directory").doc(req.data.uid).get();
+    if (!dir.exists) throw new HttpsError("not-found", "That person isn't in the directory.");
+    targetUid = req.data.uid;
+  } else {
+    email = cleanEmail(req.data?.email);
+    if (!email) throw new HttpsError("invalid-argument", "Choose a person or enter a valid email.");
+    targetUid = (await verifiedUidFor(email))?.uid ?? null;
+  }
+  const members: string[] = trip.get("memberUids") ?? [];
+  if (targetUid) {
+    if (members.includes(targetUid)) return { status: "already" };
+    if (members.length >= MAX_MEMBERS) throw new HttpsError("resource-exhausted", "This trip has the maximum number of people.");
+    await trip.ref.update({ extraAccessUids: FieldValue.arrayUnion(targetUid), ...(email ? { extraAccessEmails: FieldValue.arrayRemove(email) } : {}) });
+  } else {
+    const pending: string[] = trip.get("pendingEmails") ?? [];
+    if (pending.includes(email!)) return { status: "already" };
     if (pending.length >= MAX_PENDING) throw new HttpsError("resource-exhausted", "Too many pending invitations.");
-    tx.update(ref, { pendingEmails: FieldValue.arrayUnion(email) });
-    return { status: "pending" };
-  });
+    await trip.ref.update({ extraAccessEmails: FieldValue.arrayUnion(email) });
+  }
+  await recomputeTripAccess(db, tripId);
+  return { status: targetUid ? "added" : "pending" };
 });
 
-/** HOST removes a person (by uid) or a pending email. */
+/**
+ * HOST removes ADDITIONAL access (a person or a pending email). Someone in a role, on a flight or
+ * who requested the trip keeps access; the result says so.
+ */
 export const removeTripAccess = onCall(async (req) => {
   assertHost(req);
   const tripId = req.data?.tripId;
   if (!isDocId(tripId)) throw new HttpsError("invalid-argument", "Unknown trip.");
   const db = getFirestore();
   const ref = db.collection("trips").doc(tripId);
-  if (typeof req.data?.uid === "string" && /^[A-Za-z0-9]{1,128}$/.test(req.data.uid)) {
-    const target = req.data.uid as string;
-    const batch = db.batch();
-    batch.update(ref, { memberUids: FieldValue.arrayRemove(target) });
-    batch.delete(ref.collection("members").doc(target));
-    await batch.commit();
-    return { ok: true };
+  if (isUid(req.data?.uid)) await ref.update({ extraAccessUids: FieldValue.arrayRemove(req.data.uid) });
+  else {
+    const email = cleanEmail(req.data?.email);
+    if (!email) throw new HttpsError("invalid-argument", "Nothing to remove.");
+    await ref.update({ extraAccessEmails: FieldValue.arrayRemove(email) });
   }
-  const email = cleanEmail(req.data?.email);
-  if (!email) throw new HttpsError("invalid-argument", "Nothing to remove.");
-  await ref.update({ pendingEmails: FieldValue.arrayRemove(email) });
-  return { ok: true };
+  const result = await recomputeTripAccess(db, tripId);
+  const still = isUid(req.data?.uid) ? result?.members[req.data.uid]?.reasons ?? [] : [];
+  return { ok: true, stillOnTripAs: still };
 });
 
 /** After confirming their email, a person receives every trip that was waiting for that address. */
@@ -66,18 +74,25 @@ export const syncPendingAccess = onCall(async (req) => {
   const { uid, email } = assertVerified(req);
   const db = getFirestore();
   const trips = await db.collection("trips").where("pendingEmails", "array-contains", email).limit(100).get();
-  const name = cleanText(req.auth?.token.name, 80) || email.split("@")[0];
   for (const t of trips.docs) {
-    await db.runTransaction(async (tx) => {
-      const fresh = await tx.get(t.ref);
-      if (!((fresh.get("pendingEmails") ?? []) as string[]).includes(email)) return;
-      // Fill in the uid on any role held by this email, so the Team Leader is recognised.
-      const roles = (fresh.get("roles") ?? {}) as Record<string, { email?: string; uid?: string | null }>;
-      const patch: Record<string, unknown> = { memberUids: FieldValue.arrayUnion(uid), pendingEmails: FieldValue.arrayRemove(email) };
-      for (const [k, r] of Object.entries(roles)) if (r?.email === email) patch[`roles.${k}.uid`] = uid;
-      tx.update(t.ref, patch);
-      tx.set(t.ref.collection("members").doc(uid), { name, email, addedByName: "Invitation", addedAt: FieldValue.serverTimestamp() }, { merge: true });
-    });
+    const roles = (t.get("roles") ?? {}) as Record<string, { email?: string; uid?: string | null }>;
+    const patch: Record<string, unknown> = {};
+    for (const [k, r] of Object.entries(roles)) if ((r?.email ?? "").toLowerCase() === email) patch[`roles.${k}.uid`] = uid;
+    if (((t.get("extraAccessEmails") ?? []) as string[]).includes(email)) {
+      patch.extraAccessEmails = FieldValue.arrayRemove(email);
+      patch.extraAccessUids = FieldValue.arrayUnion(uid);
+    }
+    if (Object.keys(patch).length) await t.ref.update(patch);
+    await recomputeTripAccess(db, t.id);
   }
   return { added: trips.size };
+});
+
+/** Booking someone on a flight (or taking them off) changes who is part of the trip. */
+export const onFlightWritten = onDocumentWritten("trips/{tripId}/flights/{flightId}", async (event) => {
+  const passengersOf = (d: FirebaseFirestore.DocumentData | undefined) =>
+    JSON.stringify(((d?.passengers ?? []) as { uid?: string }[]).map((p) => p?.uid ?? "").sort());
+  // Only recompute when the set of booked people changed (cost/status edits don't affect access).
+  if (passengersOf(event.data?.before?.data()) === passengersOf(event.data?.after?.data())) return;
+  await recomputeTripAccess(getFirestore(), event.params.tripId);
 });

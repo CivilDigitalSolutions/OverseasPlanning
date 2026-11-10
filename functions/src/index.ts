@@ -5,8 +5,9 @@ initializeApp();
 
 export { recordAgreement } from "./recordAgreement";
 export { createTrip, updateTripRoles } from "./createTrip";
-export { addTripAccess, removeTripAccess, syncPendingAccess } from "./tripAccess";
-export { setHostRole } from "./setHostRole";
+export { addTripAccess, removeTripAccess, syncPendingAccess, onFlightWritten } from "./tripAccess";
+export { listLiveTrips } from "./listLiveTrips";
+export { setHostRole, setRole } from "./setHostRole";
 export {
   passkeyRegistrationOptions, passkeyRegister, passkeySignInOptions, passkeySignIn, listPasskeys, deletePasskey,
 } from "./passkeys";

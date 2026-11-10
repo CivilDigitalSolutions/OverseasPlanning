@@ -64,8 +64,23 @@ A mobile-first, installable web app (PWA) to request, plan, run and debrief over
    risk levels) **and the team messages**; planning is done from the full trip screen.
    A trip can therefore appear in both Planning and Live trips while it is close to departure.
 
-Access: the requester, every role holder with a confirmed account, and anyone added through
-**Access** see the trip. HOST sees every trip.
+Access (owner decision 2026-11-10): **a trip is visible only to the people on it** —
+the **requester**, everyone named in a **role**, everyone **booked on a flight**, and anyone given
+**additional access** — plus the whole **HOST team** (sees every trip) and **controllers** (see
+every *live* trip's basic details and team messages, and can post there; nothing else).
+- `trips.memberUids` is worked out by Cloud Functions from those sources
+  (`functions/src/lib/membership.ts`, mirrored in `web/src/membership.ts`) after every change:
+  trip creation, role edits, additional access added/removed, a pending email signing up, and any
+  change to who is booked on a flight (`onFlightWritten` trigger). Someone taken off a role or a
+  flight therefore **loses access** unless they're still on the trip another way. The Access tab
+  shows each person's reasons ("Requester", "Team Leader", "On flight TP1351", "Additional access").
+- Additional access is kept in `extraAccessUids` / `extraAccessEmails`; HOST removes it. Older
+  trips without those fields keep everyone they had as additional access.
+- **In-app directory** (`directory/{uid}`: name + sign-in email, each person writes only their own,
+  everyone signed in can search it): people pickers for flight passengers, roles and Access.
+- **Controller** is a role profile (custom claim, granted by an administrator). Controllers get the
+  live list from `listLiveTrips` (basic details only) and the rules let them read a live trip and
+  read/post its messages; never planning tabs or trips outside the live window.
 
 - Risk scale: provisional **Low / Medium / High / Critical**. **TODO(owner): confirm the scale**
   (also in `firestore.rules`).

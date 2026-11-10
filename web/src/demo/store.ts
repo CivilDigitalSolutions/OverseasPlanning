@@ -5,11 +5,13 @@
  */
 import { useEffect, useState } from "react";
 import {
+  liveTrips, todayIso,
   EMPTY_DEBRIEF, MAX_ATTACHMENT_BYTES, PRIVACY_VERSION, REQUEST_KINDS, TERMS_VERSION,
   type ChatMessage, type Contact, type ContactInput, type TripContact, type Debrief, type FinanceEntry, type RequestInput, type RequestKind, type RoleHolder, type TlRequest,
   type TlRequestStatus, type Trip, type TripRequest, type TripRoleKey, type TripStatus, type VaccinationDeclaration, type VaccineRecord,
 } from "../model";
 import { DELETE, be, type QuerySpec, type Snap } from "./backend";
+import { computeAccess, flightLabel, type AccessInput, type Person } from "../membership";
 
 const now = () => Date.now();
 const str = (v: unknown) => (typeof v === "string" ? v : "");
@@ -33,8 +35,8 @@ function useDocOf<T>(path: string, map: (s: Snap | null) => T): T | undefined {
 
 // ---- Session (demo accounts) -------------------------------------------------------------------
 
-export interface Session { uid: string; email: string; name: string; emailVerified: boolean; isHost: boolean; isAdmin: boolean }
-export interface Account { name: string; email: string; emailVerified: boolean; host: boolean; passkeys: { id: string; label: string; createdAtMs: number; lastUsedAtMs: number }[] }
+export interface Session { uid: string; email: string; name: string; emailVerified: boolean; isHost: boolean; isAdmin: boolean; isController: boolean }
+export interface Account { name: string; email: string; emailVerified: boolean; host: boolean; controller: boolean; passkeys: { id: string; label: string; createdAtMs: number; lastUsedAtMs: number }[] }
 
 const SIGNED_IN = "op.demo.signedIn";
 let signedIn = (() => { try { return localStorage.getItem(SIGNED_IN) === "1"; } catch { return false; } })();
@@ -46,7 +48,7 @@ export function setSignedIn(v: boolean) {
 }
 export const accountPath = () => `accounts/${be().uid}`;
 export const toAccount = (s: Snap | null): Account | null => s ? {
-  name: str(s.data.name), email: str(s.data.email), emailVerified: s.data.emailVerified === true, host: s.data.host === true,
+  name: str(s.data.name), email: str(s.data.email), emailVerified: s.data.emailVerified === true, host: s.data.host === true, controller: s.data.controller === true,
   passkeys: Array.isArray(s.data.passkeys) ? s.data.passkeys as Account["passkeys"] : [],
 } : null;
 
@@ -62,7 +64,7 @@ export function useSession(): Session | null | undefined {
   if (!signedIn || !account) return null;
   return {
     uid: be().uid, email: account.email, name: account.name || account.email, emailVerified: account.emailVerified,
-    isHost: account.host, isAdmin: true,
+    isHost: account.host, isAdmin: true, isController: account.controller,
   };
 }
 
@@ -90,14 +92,69 @@ export async function syncPendingAccess() {
   const trips = await be().list("trips", { where: [["pendingEmails", "array-contains", me.email]] });
   for (const t of trips) {
     const roles = (t.data.roles ?? {}) as Record<string, RoleHolder>;
-    for (const r of Object.values(roles)) if (r?.email === me.email) r.uid = be().uid;
-    await be().patch(`trips/${t.id}`, {
-      roles, memberUids: [...new Set([...(t.data.memberUids as string[] ?? []), be().uid])],
-      pendingEmails: (t.data.pendingEmails as string[] ?? []).filter((e) => e !== me.email),
-    });
-    await be().set(`trips/${t.id}/members/${be().uid}`, { name: me.name, email: me.email, addedByName: "Invitation", addedAt: now() });
+    for (const r of Object.values(roles)) if ((r?.email ?? "").toLowerCase() === me.email) r.uid = be().uid;
+    const extraEmails = (t.data.extraAccessEmails as string[] | undefined) ?? [];
+    const patch: Record<string, unknown> = { roles };
+    if (extraEmails.includes(me.email)) {
+      patch.extraAccessEmails = extraEmails.filter((e) => e !== me.email);
+      patch.extraAccessUids = [...new Set([...((t.data.extraAccessUids as string[] | undefined) ?? []), be().uid])];
+    }
+    await be().patch(`trips/${t.id}`, patch);
+    await recomputeAccess(t.id);
   }
   return { added: trips.length };
+}
+
+// ---- Directory + membership (production: functions/src/lib/membership.ts) ----------------------
+
+export interface DirectoryPerson { uid: string; name: string; email: string }
+/** The in-app directory: everyone signed up with a confirmed email (demo: the demo accounts). */
+export function useDirectory(): DirectoryPerson[] | null {
+  const list = useColl("accounts", {}, (s) => ({ uid: s.id, name: str(s.data.name), email: str(s.data.email), ok: s.data.emailVerified === true }));
+  return list ? list.filter((p) => p.ok && p.name).map(({ uid, name, email }) => ({ uid, name, email })) : null;
+}
+export const upsertDirectory = async (_s: Session) => undefined; // demo: accounts are the directory
+
+/** Recompute who is part of a trip from requester, roles, flight passengers and additional access. */
+export async function recomputeAccess(tripId: string) {
+  const t = await be().get(`trips/${tripId}`);
+  if (!t) return null;
+  const [flights, memberDocs] = await Promise.all([be().list(`trips/${tripId}/flights`), be().list(`trips/${tripId}/members`)]);
+  const known = new Map(memberDocs.map((d) => [d.id, { name: str(d.data.name), email: str(d.data.email), addedAt: d.data.addedAt }]));
+  let requesterUid = str(t.data.requesterUid);
+  let requester: Person | null = null;
+  const reqId = str(t.data.requestId);
+  const r = reqId ? await be().get(`tripRequests/${reqId}`) : null;
+  if (r) { requesterUid ||= str(r.data.requesterUid); requester = { uid: requesterUid, name: str(r.data.requesterName), email: str(r.data.requesterEmail) }; }
+  const roles = (t.data.roles ?? {}) as AccessInput["roles"];
+  const passengers: AccessInput["passengers"] = [];
+  for (const f of flights) {
+    for (const p of (f.data.passengers ?? []) as Record<string, unknown>[]) {
+      if (p && typeof p.uid === "string" && p.uid) passengers.push({ flight: flightLabel(f.data), name: str(p.name), uid: p.uid, email: str(p.email) });
+    }
+  }
+  const explained = new Set([requesterUid, ...Object.values(roles).map((x) => x?.uid ?? ""), ...passengers.map((p) => p.uid ?? "")]);
+  const roleEmails = new Set(Object.values(roles).map((x) => (x?.email ?? "").toLowerCase()).filter(Boolean));
+  const extraUidList: string[] = Array.isArray(t.data.extraAccessUids) ? t.data.extraAccessUids as string[]
+    : ((t.data.memberUids ?? []) as string[]).filter((u) => !explained.has(u));
+  const extraEmails: string[] = Array.isArray(t.data.extraAccessEmails) ? t.data.extraAccessEmails as string[]
+    : ((t.data.pendingEmails ?? []) as string[]).filter((e) => !roleEmails.has(e.toLowerCase()));
+  const extraUids: Person[] = [];
+  for (const uid of extraUidList) {
+    let p = known.get(uid) as { name: string; email: string } | undefined;
+    if (!p?.name) { const a = await be().get(`accounts/${uid}`); if (a) p = { name: str(a.data.name), email: str(a.data.email) }; }
+    extraUids.push({ uid, name: p?.name ?? "", email: p?.email ?? "" });
+  }
+  const result = computeAccess({ requester, roles, passengers, extraUids, extraEmails });
+  await be().patch(`trips/${tripId}`, {
+    memberUids: result.memberUids, pendingEmails: result.pendingEmails, extraAccessUids: extraUidList, extraAccessEmails: extraEmails,
+    ...(requesterUid ? { requesterUid } : {}),
+  });
+  for (const [uid, m] of Object.entries(result.members)) {
+    await be().set(`trips/${tripId}/members/${uid}`, { name: m.name, email: m.email, reasons: m.reasons, addedAt: known.get(uid)?.addedAt ?? now() });
+  }
+  for (const d of memberDocs) if (!result.members[d.id]) await be().del(`trips/${tripId}/members/${d.id}`);
+  return result;
 }
 
 // ---- Trip requests ----------------------------------------------------------------------------
@@ -155,11 +212,11 @@ export async function createTrip(input: CreateTripInput) {
     name: input.name, teamName: req.data.teamName, location: req.data.location, startDate: req.data.startDate, endDate: req.data.endDate,
     status: "planning", cyberRisk: input.cyberRisk, cyberRationale: input.cyberRationale, countryRisk: input.countryRisk,
     countryRationale: input.countryRationale, roles, memberUids: [...members.keys()], pendingEmails: [...pending],
-    requestId: input.requestId, createdBy: be().uid, createdByName: me?.name ?? "", createdByEmail: me?.email ?? "",
+    requestId: input.requestId, requesterUid: str(req.data.requesterUid), extraAccessUids: [], extraAccessEmails: [], createdBy: be().uid, createdByName: me?.name ?? "", createdByEmail: me?.email ?? "",
     createdAt: now(), updatedAt: now(),
   });
-  for (const [uid, m] of members) await be().set(`trips/${tripId}/members/${uid}`, { ...m, addedByName: me?.name ?? "HOST", addedAt: now() });
   await be().patch(`tripRequests/${input.requestId}`, { status: "accepted", tripId, decidedAt: now() });
+  await recomputeAccess(tripId);
   return { tripId };
 }
 
@@ -188,8 +245,11 @@ export const useTrips = (s: Session) =>
 
 export const useTrip = (id: string) => useDocOf(`trips/${id}`, (d) => (d ? toTrip(d) : null));
 
-export interface MemberProfile { uid: string; name: string; email: string; addedByName: string; addedAtMs: number }
-const toMember = (s: Snap): MemberProfile => ({ uid: s.id, name: str(s.data.name), email: str(s.data.email), addedByName: str(s.data.addedByName), addedAtMs: ms(s.data.addedAt) });
+export interface MemberProfile { uid: string; name: string; email: string; reasons: string[]; addedByName: string; addedAtMs: number }
+const toMember = (s: Snap): MemberProfile => ({
+  uid: s.id, name: str(s.data.name), email: str(s.data.email), reasons: Array.isArray(s.data.reasons) ? (s.data.reasons as unknown[]).map(String) : [],
+  addedByName: str(s.data.addedByName), addedAtMs: ms(s.data.addedAt),
+});
 export const useMembers = (tripId: string) => useColl(`trips/${tripId}/members`, {}, toMember, tripId);
 
 async function editStamp() {
@@ -205,44 +265,37 @@ export const setDipAgreed = async (id: string, agreed: boolean, date: string) =>
 export async function updateTripRoles(tripId: string, roles: Partial<Record<TripRoleKey, RoleHolder>>) {
   const t = await be().get(`trips/${tripId}`);
   if (!t) throw new Error("Trip not found.");
-  const resolved = await resolveRoles(roles);
-  const memberUids = new Set<string>(t.data.memberUids as string[] ?? []);
-  const pending = new Set<string>(t.data.pendingEmails as string[] ?? []);
-  for (const h of Object.values(resolved)) {
-    if (!h) continue;
-    if (h.uid && !memberUids.has(h.uid)) { memberUids.add(h.uid); await be().set(`trips/${tripId}/members/${h.uid}`, { name: h.name, email: h.email, addedByName: "HOST", addedAt: now() }); }
-    else if (!h.uid && h.email) pending.add(h.email);
-  }
-  await be().patch(`trips/${tripId}`, { roles: resolved, memberUids: [...memberUids], pendingEmails: [...pending], ...(await editStamp()) });
+  await be().patch(`trips/${tripId}`, { roles: await resolveRoles(roles), ...(await editStamp()) });
+  await recomputeAccess(tripId);
 }
 
-export async function addTripAccess(tripId: string, email: string, name: string): Promise<{ status: "added" | "pending" | "already" }> {
+export async function addTripAccess(tripId: string, target: { uid?: string; email?: string }): Promise<{ status: "added" | "pending" | "already" }> {
   const t = await be().get(`trips/${tripId}`);
   if (!t) throw new Error("Trip not found.");
-  const me = toAccount(await be().get(accountPath()));
-  const target = await accountByEmail(email);
-  const members = t.data.memberUids as string[] ?? [];
-  const pending = t.data.pendingEmails as string[] ?? [];
-  if (target) {
-    if (members.includes(target.uid)) return { status: "already" };
-    await be().patch(`trips/${tripId}`, { memberUids: [...members, target.uid], pendingEmails: pending.filter((e) => e !== email) });
-    await be().set(`trips/${tripId}/members/${target.uid}`, { name: name || target.name || email.split("@")[0], email, addedByName: me?.name ?? "", addedAt: now() });
+  const members = (t.data.memberUids as string[]) ?? [];
+  const extraUids = (t.data.extraAccessUids as string[] | undefined) ?? [];
+  const extraEmails = (t.data.extraAccessEmails as string[] | undefined) ?? [];
+  const email = (target.email ?? "").trim().toLowerCase();
+  const uid = target.uid ?? (email ? (await accountByEmail(email))?.uid : undefined);
+  if (uid) {
+    if (members.includes(uid)) return { status: "already" };
+    await be().patch(`trips/${tripId}`, { extraAccessUids: [...extraUids, uid], extraAccessEmails: extraEmails.filter((e) => e !== email) });
+    await recomputeAccess(tripId);
     return { status: "added" };
   }
-  if (pending.includes(email)) return { status: "already" };
-  await be().patch(`trips/${tripId}`, { pendingEmails: [...pending, email] });
+  if (((t.data.pendingEmails as string[]) ?? []).includes(email)) return { status: "already" };
+  await be().patch(`trips/${tripId}`, { extraAccessEmails: [...extraEmails, email] });
+  await recomputeAccess(tripId);
   return { status: "pending" };
 }
 
-export async function removeTripAccess(tripId: string, target: { uid?: string; email?: string }) {
+export async function removeTripAccess(tripId: string, target: { uid?: string; email?: string }): Promise<{ stillOnTripAs: string[] }> {
   const t = await be().get(`trips/${tripId}`);
-  if (!t) return;
-  if (target.uid) {
-    await be().patch(`trips/${tripId}`, { memberUids: (t.data.memberUids as string[] ?? []).filter((u) => u !== target.uid) });
-    await be().del(`trips/${tripId}/members/${target.uid}`);
-  } else if (target.email) {
-    await be().patch(`trips/${tripId}`, { pendingEmails: (t.data.pendingEmails as string[] ?? []).filter((e) => e !== target.email) });
-  }
+  if (!t) return { stillOnTripAs: [] };
+  if (target.uid) await be().patch(`trips/${tripId}`, { extraAccessUids: ((t.data.extraAccessUids as string[] | undefined) ?? (t.data.memberUids as string[]) ?? []).filter((u) => u !== target.uid) });
+  else if (target.email) await be().patch(`trips/${tripId}`, { extraAccessEmails: ((t.data.extraAccessEmails as string[] | undefined) ?? []).filter((e) => e !== target.email) });
+  const r = await recomputeAccess(tripId);
+  return { stillOnTripAs: target.uid ? r?.members[target.uid]?.reasons ?? [] : [] };
 }
 
 // ---- Planning items ---------------------------------------------------------------------------
@@ -253,11 +306,12 @@ const toItem = (s: Snap): Item => {
   return { id: s.id, values, createdByName: str(createdByName), updatedAtMs: ms(updatedAt) };
 };
 export const useItems = (tripId: string, coll: string) => useColl(`trips/${tripId}/${coll}`, { orderBy: ["createdAt", "asc"] }, toItem, `${tripId}/${coll}`);
+const afterFlights = (tripId: string, coll: string) => (coll === "flights" ? recomputeAccess(tripId).then(() => undefined) : Promise.resolve());
 export const addItem = (s: Session, tripId: string, coll: string, values: Record<string, unknown>) =>
-  be().set(`trips/${tripId}/${coll}/${be().newId()}`, { ...values, createdBy: s.uid, createdByName: s.name.slice(0, 80), createdAt: now(), updatedAt: now() });
+  be().set(`trips/${tripId}/${coll}/${be().newId()}`, { ...values, createdBy: s.uid, createdByName: s.name.slice(0, 80), createdAt: now(), updatedAt: now() }).then(() => afterFlights(tripId, coll));
 export const updateItem = (tripId: string, coll: string, id: string, values: Record<string, unknown>, keys: string[]) =>
-  be().patch(`trips/${tripId}/${coll}/${id}`, { ...Object.fromEntries(keys.map((k) => [k, k in values ? values[k] : DELETE])), updatedAt: now() });
-export const deleteItem = (tripId: string, coll: string, id: string) => be().del(`trips/${tripId}/${coll}/${id}`);
+  be().patch(`trips/${tripId}/${coll}/${id}`, { ...Object.fromEntries(keys.map((k) => [k, k in values ? values[k] : DELETE])), updatedAt: now() }).then(() => afterFlights(tripId, coll));
+export const deleteItem = (tripId: string, coll: string, id: string) => be().del(`trips/${tripId}/${coll}/${id}`).then(() => afterFlights(tripId, coll));
 
 
 export const decideFlight = (s: Session, tripId: string, id: string, decision: "approved" | "not_approved", rationale: string) =>
@@ -447,11 +501,17 @@ export const removeTripContact = (tripId: string, id: string) => be().del(`trips
 
 // ---- HOST administration ------------------------------------------------------------------------
 
-export async function setHostRole(email: string, host: boolean) {
+export async function setRole(email: string, role: "host" | "controller", on: boolean) {
   const hits = await be().list("accounts", { where: [["email", "==", email.toLowerCase()]] });
   if (hits.length === 0) throw new Error("No account with that email.");
-  for (const h of hits) await be().patch(`accounts/${h.id}`, { host });
+  for (const h of hits) await be().patch(`accounts/${h.id}`, { [role]: on });
   return { uid: hits[0].id };
+}
+
+/** Controllers: every live trip, basic details only (production: listLiveTrips callable). */
+export function useControllerLiveTrips(s: Session): Trip[] | null {
+  const all = useColl(s.isController ? "trips" : null, {}, toTrip, String(s.isController));
+  return s.isController ? (all ? liveTrips(all, todayIso()) : null) : [];
 }
 
 // ---- PDF snapshot -----------------------------------------------------------------------------

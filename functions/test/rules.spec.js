@@ -276,6 +276,46 @@ describe("contacts book", () => {
   });
 });
 
+describe("controllers and the directory", () => {
+  const iso = (days) => new Date(Date.now() + days * 86400000).toISOString().slice(0, 10);
+  const ctl = () => as("ctl", { controller: true });
+  beforeEach(() => env.withSecurityRulesDisabled(async (ctx) => {
+    const db = ctx.firestore();
+    await setDoc(doc(db, "trips", "liveSoon"), { ...tripDoc(["alice"]), startDate: iso(3), endDate: iso(6) });
+    await setDoc(doc(db, "trips", "farOff"), { ...tripDoc(["alice"]), startDate: iso(40), endDate: iso(45) });
+    await setDoc(doc(db, "trips", "closed"), { ...tripDoc(["alice"]), startDate: iso(-3), endDate: iso(-1), status: "archived" });
+    await setDoc(doc(db, "trips", "liveSoon", "messages", "m1"), { senderUid: "alice", text: "hi" });
+  }));
+  it("D1 controllers read live trips and their messages, and post there", async () => {
+    await assertSucceeds(getDoc(doc(ctl(), "trips", "liveSoon")));
+    await assertSucceeds(getDocs(collection(ctl(), "trips", "liveSoon", "messages")));
+    await assertSucceeds(addDoc(collection(ctl(), "trips", "liveSoon", "messages"), { senderUid: "ctl", senderName: "C", text: "Checking in", createdAt: serverTimestamp() }));
+  });
+  it("D2 controllers cannot see trips outside the live window, archived trips, or planning data", async () => {
+    await assertFails(getDoc(doc(ctl(), "trips", "farOff")));
+    await assertFails(getDoc(doc(ctl(), "trips", "closed")));
+    await assertFails(getDocs(collection(ctl(), "trips", "farOff", "messages")));
+    await assertFails(getDocs(collection(ctl(), "trips", "liveSoon", "flights")));
+    await assertFails(getDocs(collection(ctl(), "trips")));
+  });
+  it("D3 non-members (no role) never see a trip, live or not", async () => {
+    await assertFails(getDoc(doc(outsider(), "trips", "liveSoon")));
+    await assertFails(getDocs(collection(outsider(), "trips", "liveSoon", "messages")));
+  });
+  it("D4 directory: everyone verified searches; each writes only their own entry, with their own email", async () => {
+    await assertSucceeds(setDoc(doc(member(), "directory", "alice"), { name: "Alice", email: "alice@x.com", updatedAt: serverTimestamp() }));
+    await assertFails(setDoc(doc(member(), "directory", "alice"), { name: "Alice", email: "boss@x.com", updatedAt: serverTimestamp() }));
+    await assertFails(setDoc(doc(member(), "directory", "eve"), { name: "Eve", email: "alice@x.com", updatedAt: serverTimestamp() }));
+    await assertSucceeds(getDocs(collection(outsider(), "directory")));
+    await assertFails(getDocs(collection(unverified(), "directory")));
+  });
+  it("D5 access lists stay functions-only", async () => {
+    const ed = (uid, o) => ({ ...o, updatedAt: serverTimestamp(), updatedBy: uid, updatedByName: uid });
+    await assertFails(updateDoc(doc(member(), "trips", TRIP), ed("alice", { extraAccessUids: ["eve"] })));
+    await assertFails(updateDoc(doc(host(), "trips", TRIP), ed("host", { memberUids: ["eve"] })));
+  });
+});
+
 describe("request deletion", () => {
   it("16b creator withdraws while pending; afterwards only the SPC deletes (not HOST)", async () => {
     await assertFails(deleteDoc(doc(host(), "trips", TRIP, "tlRequests", "q1")));

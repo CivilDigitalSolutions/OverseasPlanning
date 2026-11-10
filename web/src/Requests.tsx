@@ -4,6 +4,7 @@ import {
   EMAIL_RE, RISK_LEVELS, TRIP_ROLES, dateRange, validateRequest,
   type RequestInput, type RoleHolder, type TripRequest, type TripRoleKey,
 } from "./model";
+import { RolePersonFields } from "./PeoplePicker";
 import { createTrip, declineRequest, submitRequest, useRequest, type Session } from "./store";
 
 const STATUS = { submitted: { tone: "warn", label: "Awaiting triage" }, accepted: { tone: "ok", label: "Trip created" }, declined: { tone: "bad", label: "Declined" } } as const;
@@ -104,7 +105,6 @@ export function CreateTrip({ session: _s, requestId }: { session: Session; reque
   if (req === null) return <Empty>Request not found</Empty>;
   if (req.status !== "submitted") return <Notice>This request has already been {req.status}.</Notice>;
 
-  const setRole = (k: TripRoleKey, f: keyof RoleHolder) => (v: string) => setRoles({ ...roles, [k]: { ...roles[k], [f]: v } });
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -160,10 +160,8 @@ export function CreateTrip({ session: _s, requestId }: { session: Session; reque
         <section className="card stack">
           <h2>Roles</h2>
           {TRIP_ROLES.map((r) => (
-            <div key={r.key} className="grid2">
-              <TextField label={r.label} placeholder="Full name" value={roles[r.key].name} onChange={setRole(r.key, "name")} error={errors[`${r.key}.name`]} maxLength={80} />
-              <TextField label={`${r.label} email`} type="email" placeholder="name@example.com" value={roles[r.key].email} onChange={setRole(r.key, "email")} error={errors[`${r.key}.email`]} />
-            </div>
+            <RolePersonFields key={r.key} label={r.label} value={roles[r.key]} onChange={(v) => setRoles({ ...roles, [r.key]: v })}
+              errors={{ name: errors[`${r.key}.name`], email: errors[`${r.key}.email`] }} />
           ))}
         </section>
 

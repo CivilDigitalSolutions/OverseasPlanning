@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Badge, Empty, Link, Loading } from "./components";
 import { dateRange, liveTrips, riskTone, todayIso, tripPhase, tripsFor, type TripStatus } from "./model";
-import { useTrips, type Session } from "./store";
+import { useControllerLiveTrips, useTrips, type Session } from "./store";
 
 const TITLES: Record<TripStatus, string> = { planning: "Planning", live: "Live trips", archived: "Archived trips" };
 
@@ -11,12 +11,15 @@ const TITLES: Record<TripStatus, string> = { planning: "Planning", live: "Live t
  */
 export function TripList({ session, status }: { session: Session; status: TripStatus }) {
   const trips = useTrips(session);
+  // Controllers also see every live trip they aren't on (basic details; owner, 2026-11-10).
+  const controllerLive = useControllerLiveTrips(session);
   const [q, setQ] = useState("");
   const searchable = status === "archived";
   // Live trips is a date window, not a status: not archived and starting within 10 days or already started.
   const live = status === "live";
   const today = todayIso();
-  const list = trips ? (live ? liveTrips(trips, today) : tripsFor(trips, status, searchable ? q : "")) : null;
+  const merged = trips && live && controllerLive ? [...trips, ...controllerLive.filter((c) => !trips.some((t) => t.id === c.id))] : trips;
+  const list = merged ? (live ? liveTrips(merged, today) : tripsFor(merged, status, searchable ? q : "")) : null;
 
   return (
     <>

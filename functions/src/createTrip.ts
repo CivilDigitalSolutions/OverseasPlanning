@@ -1,7 +1,8 @@
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { FieldValue, getFirestore } from "firebase-admin/firestore";
 import { assertHost, assertTripAccess, assertVerified } from "./lib/auth";
-import { verifiedUidFor, writeMember } from "./lib/access";
+import { verifiedUidFor } from "./lib/access";
+import { recomputeTripAccess } from "./lib/membership";
 import { cleanRisk, cleanRoles, cleanText, isDocId, type RoleKey } from "./lib/validate";
 
 /**
@@ -50,19 +51,21 @@ export const createTrip = onCall(async (req) => {
       teamName, location, startDate: r.get("startDate"), endDate: r.get("endDate"), status: "planning",
       cyberRisk: cyber.level, cyberRationale: cyber.rationale, countryRisk: country.level, countryRationale: country.rationale,
       roles: resolved, memberUids: [...members.keys()], pendingEmails: [...pending], requestId,
+      requesterUid, extraAccessUids: [], extraAccessEmails: [],
       // Shown on the trip's Overview: the HOST member who created the record.
       createdBy: uid, createdByName: hostName, createdByEmail: cleanText(req.auth?.token.email, 254),
       createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp(),
     });
-    for (const [mUid, m] of members) writeMember(tx, tripRef, mUid, m.name, m.email, { uid, name: hostName });
     tx.update(reqRef, { status: "accepted", tripId: tripRef.id, decidedBy: uid, decidedAt: FieldValue.serverTimestamp() });
   });
+  // Members (with the reason each person is on the trip) come from the one access calculation.
+  await recomputeTripAccess(db, tripRef.id);
   return { tripId: tripRef.id };
 });
 
 /**
- * Anyone on the trip changes the role holders (owner decision 2026-11-10). New holders gain access;
- * nobody loses access here (HOST uses removeTripAccess).
+ * Anyone on the trip changes the role holders (owner decision 2026-11-10). Access is then
+ * recomputed: new holders gain it, people no longer part of the trip lose it.
  */
 export const updateTripRoles = onCall(async (req) => {
   const { uid } = assertVerified(req);
@@ -79,20 +82,8 @@ export const updateTripRoles = onCall(async (req) => {
   }
   const db = getFirestore();
   const tripRef = db.collection("trips").doc(tripId);
-  await db.runTransaction(async (tx) => {
-    const t = await tx.get(tripRef);
-    if (!t.exists) throw new HttpsError("not-found", "Trip not found.");
-    const memberUids = new Set<string>(t.get("memberUids") ?? []);
-    const pending = new Set<string>(t.get("pendingEmails") ?? []);
-    for (const h of Object.values(resolved)) {
-      if (!h) continue;
-      if (h.uid && !memberUids.has(h.uid)) { memberUids.add(h.uid); writeMember(tx, tripRef, h.uid, h.name, h.email, { uid, name: hostName }); }
-      else if (!h.uid && h.email) pending.add(h.email);
-    }
-    tx.update(tripRef, {
-      roles: resolved, memberUids: [...memberUids], pendingEmails: [...pending],
-      updatedAt: FieldValue.serverTimestamp(), updatedBy: uid, updatedByName: hostName,
-    });
-  });
+  await tripRef.update({ roles: resolved, updatedAt: FieldValue.serverTimestamp(), updatedBy: uid, updatedByName: hostName });
+  // New role holders gain access; anyone no longer in a role (and not otherwise on the trip) loses it.
+  await recomputeTripAccess(db, tripId);
   return { ok: true };
 });

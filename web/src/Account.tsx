@@ -4,14 +4,14 @@ import { Confirm, Icon, Notice, TextField, errorText, relTime } from "./componen
 import { auth } from "./firebase";
 import { EMAIL_RE } from "./model";
 import { addPasskey, biometricAvailable, deletePasskey, deviceLabel, listPasskeys, passkeysSupported, type PasskeyInfo } from "./passkeys";
-import { setHostRole, type Session } from "./store";
+import { setRole, type Session } from "./store";
 
 export function Account({ session }: { session: Session }) {
   return (
     <>
       <div className="page-head"><h1>Account</h1></div>
       <section className="card stack">
-        <dl className="kv"><dt>Name</dt><dd>{session.name}</dd><dt>Email</dt><dd>{session.email}</dd><dt>Role</dt><dd>{session.isHost ? "HOST" : "Member"}</dd></dl>
+        <dl className="kv"><dt>Name</dt><dd>{session.name}</dd><dt>Email</dt><dd>{session.email}</dd><dt>Role</dt><dd>{[session.isHost && "HOST", session.isController && "Controller"].filter(Boolean).join(", ") || "Member"}</dd></dl>
         <PasswordReset email={session.email} />
       </section>
       <Passkeys />
@@ -66,23 +66,29 @@ function Passkeys() {
   );
 }
 
-/** Admin-only: grant or remove the HOST (triage) role. */
+/** Admin-only: grant or remove the HOST (triage) and Controller role profiles. */
 function HostAdmin() {
   const [email, setEmail] = useState("");
   const [msg, setMsg] = useState<{ tone: "ok" | "bad"; text: string } | null>(null);
-  const run = async (host: boolean) => {
+  const valid = EMAIL_RE.test(email.trim());
+  const run = async (role: "host" | "controller", on: boolean) => {
     setMsg(null);
-    try { await setHostRole(email.trim().toLowerCase(), host); setMsg({ tone: "ok", text: host ? "HOST role granted." : "HOST role removed." }); }
+    const label = role === "host" ? "HOST" : "Controller";
+    try { await setRole(email.trim().toLowerCase(), role, on); setMsg({ tone: "ok", text: `${label} role ${on ? "granted" : "removed"}.` }); }
     catch (e) { setMsg({ tone: "bad", text: errorText(e) }); }
   };
   return (
     <section className="card stack">
-      <h2>HOST team</h2>
+      <h2>Role profiles</h2>
       <TextField label="Email" type="email" placeholder="name@example.com" value={email} onChange={setEmail} />
       {msg && <Notice tone={msg.tone}>{msg.text}</Notice>}
       <div className="row">
-        <button className="btn" disabled={!EMAIL_RE.test(email.trim())} onClick={() => run(true)}>Make HOST</button>
-        <button className="btn danger" disabled={!EMAIL_RE.test(email.trim())} onClick={() => run(false)}>Remove HOST</button>
+        <button className="btn" disabled={!valid} onClick={() => run("host", true)}>Make HOST</button>
+        <button className="btn danger" disabled={!valid} onClick={() => run("host", false)}>Remove HOST</button>
+      </div>
+      <div className="row">
+        <button className="btn" disabled={!valid} onClick={() => run("controller", true)}>Make Controller</button>
+        <button className="btn danger" disabled={!valid} onClick={() => run("controller", false)}>Remove Controller</button>
       </div>
     </section>
   );

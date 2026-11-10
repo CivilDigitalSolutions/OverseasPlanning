@@ -30,6 +30,17 @@ service cloud.firestore {
     function leaderUidOf(t) { return t.get('roles', {}).get('teamLeader', {}).get('uid', null); }
     /** HOST or this trip's Team Leader: moves status, reads all declarations, completes requests. */
     function isLead(tripId) { return isHost() || (verified() && leaderUidOf(trip(tripId)) == me()); }
+    /** Controller role profile: sees every LIVE trip's basic details and messages (owner, 2026-11-10). */
+    function isController() { return verified() && request.auth.token.get('controller', false) == true; }
+    /** Live window (mirrors functions/src/lib/live.ts and web model liveTrips): not archived, and
+     *  marked Live or starting within 10 days (so trips under way or over-but-not-archived count). */
+    function isLiveTrip(t) {
+      return t.get('status', '') != 'archived' && (t.get('status', '') == 'live'
+        || (t.get('startDate', '') is string && t.get('startDate', '').matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+            && timestamp.date(int(t.startDate[0:4]), int(t.startDate[5:7]), int(t.startDate[8:10])) <= request.time + duration.value(10, 'd')));
+    }
+    function controllerSees(tripId) { return isController() && isLiveTrip(trip(tripId)); }
+
     /** ONLY the trip's SPC approves or rejects requests — not HOST, not the Team Leader (owner decision 2026-11-10). */
     function isSpc(tripId) { return verified() && trip(tripId).get('roles', {}).get('spc', {}).get('uid', null) == me(); }
 
@@ -72,6 +83,18 @@ service cloud.firestore {
     }
 
     // ---- trips --------------------------------------------------------------------------------
+    // ---- in-app directory (owner, 2026-11-10): people pickers search everyone signed up ------------
+    // Each person writes only their own entry, with the email they signed in with.
+    match /directory/{uid} {
+      allow read: if verified();
+      allow create, update: if verified() && me() == uid && d().keys().hasOnly(['name', 'email', 'updatedAt'])
+        && reqStr(d(), 'name', 80) && d().email == request.auth.token.email && d().updatedAt == request.time;
+      allow delete: if verified() && me() == uid;
+    }
+
+    // ---- trips: visible ONLY to the people on the trip (memberUids: requester, role holders,
+    // flight passengers, additional access — computed by functions), the HOST team, and
+    // controllers while the trip is live.
     match /trips/{tripId} {
       /** DiP: classification from the fixed list (or "" = not set); Agreed is a bool with a real date when agreed. */
       function validDip(m) {
@@ -79,7 +102,7 @@ service cloud.firestore {
           && (!('dipAgreed' in m) || m.dipAgreed is bool)
           && (m.get('dipAgreed', false) == true ? isoDate(m.get('dipAgreedDate', '')) : m.get('dipAgreedDate', '') == '');
       }
-      allow read: if isHost() || (verified() && me() in resource.data.memberUids);
+      allow read: if isHost() || (verified() && me() in resource.data.memberUids) || (isController() && isLiveTrip(resource.data));
       allow create, delete: if false; // createTrip only
       /** Overview fields anyone on the trip may edit (owner decision 2026-11-10). Roles, memberUids and
        *  pendingEmails stay functions-only (updateTripRoles / addTripAccess). */
@@ -162,11 +185,11 @@ service cloud.firestore {
 
       // Messages: everyone on the trip reads; you post as yourself and may delete your own.
       match /messages/{id} {
-        allow read: if onTrip(tripId);
-        allow create: if onTrip(tripId) && d().keys().hasOnly(['senderUid', 'senderName', 'text', 'createdAt'])
+        allow read: if onTrip(tripId) || controllerSees(tripId);
+        allow create: if (onTrip(tripId) || controllerSees(tripId)) && d().keys().hasOnly(['senderUid', 'senderName', 'text', 'createdAt'])
           && d().senderUid == me() && reqStr(d(), 'text', 4000) && optStr(d(), 'senderName', 80) && d().createdAt == request.time;
         allow update: if false;
-        allow delete: if onTrip(tripId) && resource.data.senderUid == me();
+        allow delete: if (onTrip(tripId) || controllerSees(tripId)) && resource.data.senderUid == me();
       }
 
       // Attachment records; the file itself is in Storage at `path` (storage.rules).

@@ -6,6 +6,7 @@ import { Badge, Checkbox, Empty, Icon, Loading, Modal, Notice, SelectField, Text
 import { DebriefTab } from "./DebriefTab";
 import { ItemsTab } from "./ItemsTab";
 import { MessagesTab } from "./MessagesTab";
+import { RolePersonFields } from "./PeoplePicker";
 import {
   DIP_CLASSIFICATIONS, EMAIL_RE, ITEM_SCHEMAS, RISK_LEVELS, TRIP_ROLES, TRIP_STATUSES, dateRange, openCount, riskTone, statusHint, todayIso,
   type RoleHolder, type Trip, type TripRoleKey, type TripStatus,
@@ -240,7 +241,6 @@ function RolesEditor({ trip, onClose }: { trip: Trip; onClose: () => void }) {
     Object.fromEntries(TRIP_ROLES.map((r) => [r.key, { name: trip.roles[r.key]?.name ?? "", email: trip.roles[r.key]?.email ?? "" }])) as Record<TripRoleKey, RoleHolder>);
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
-  const set = (k: TripRoleKey, f: "name" | "email") => (v: string) => setRoles({ ...roles, [k]: { ...roles[k], [f]: v } });
   const save = async () => {
     if (host.email.trim() && !EMAIL_RE.test(host.email.trim())) { setErr("HOST assessment: enter a valid email."); return; }
     for (const r of TRIP_ROLES) if (roles[r.key].email.trim() && !EMAIL_RE.test(roles[r.key].email.trim())) { setErr(`${r.label}: enter a valid email.`); return; }
@@ -262,10 +262,7 @@ function RolesEditor({ trip, onClose }: { trip: Trip; onClose: () => void }) {
           <TextField label="HOST assessment email" type="email" placeholder="name@example.com" value={host.email} onChange={(v) => setHost({ ...host, email: v })} />
         </div>
         {TRIP_ROLES.map((r) => (
-          <div key={r.key} className="grid2">
-            <TextField label={r.label} placeholder="Full name" value={roles[r.key].name} onChange={set(r.key, "name")} maxLength={80} />
-            <TextField label={`${r.label} email`} type="email" placeholder="name@example.com" value={roles[r.key].email} onChange={set(r.key, "email")} />
-          </div>
+          <RolePersonFields key={r.key} label={r.label} value={roles[r.key]} onChange={(v) => setRoles({ ...roles, [r.key]: v })} />
         ))}
         {err && <Notice tone="bad">{err}</Notice>}
       </div>

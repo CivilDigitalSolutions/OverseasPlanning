@@ -35,6 +35,8 @@ export interface Session {
   emailVerified: boolean;
   isHost: boolean;
   isAdmin: boolean;
+  /** Controller role profile: sees and posts on every live trip (owner, 2026-11-10). */
+  isController: boolean;
 }
 
 /** undefined = still loading, null = signed out. Claims (host/admin) come from the ID token. */
@@ -46,7 +48,7 @@ export function useSession(): Session | null | undefined {
     const c = token?.claims ?? {};
     setS({
       user, uid: user.uid, email: user.email ?? "", name: user.displayName || user.email || "",
-      emailVerified: user.emailVerified, isHost: c.host === true, isAdmin: c.admin === true,
+      emailVerified: user.emailVerified, isHost: c.host === true, isAdmin: c.admin === true, isController: c.controller === true,
     });
   }), []);
   return s;
@@ -158,14 +160,15 @@ export function useTrip(id: string): Trip | null | undefined {
   return t;
 }
 
-export interface MemberProfile { uid: string; name: string; email: string; addedByName: string; addedAtMs: number }
+/** Someone on the trip, and why (Requester, a role, "On flight …", Additional access) — written by functions. */
+export interface MemberProfile { uid: string; name: string; email: string; reasons: string[]; addedByName: string; addedAtMs: number }
 
 /** Who can see a trip (written only by functions: addTripAccess / createTrip). */
 export function useMembers(tripId: string): MemberProfile[] | null {
   const [list, setList] = useState<MemberProfile[] | null>(null);
   useEffect(() => onSnapshot(collection(db, "trips", tripId, "members"), (snap) => setList(snap.docs.map((d) => {
     const v = dataOf(d);
-    return { uid: d.id, name: str(v.name), email: str(v.email), addedByName: str(v.addedByName), addedAtMs: ms(v.addedAt) };
+    return { uid: d.id, name: str(v.name), email: str(v.email), reasons: Array.isArray(v.reasons) ? v.reasons.map(String) : [], addedByName: str(v.addedByName), addedAtMs: ms(v.addedAt) };
   })), () => setList([])), [tripId]);
   return list;
 }
@@ -193,9 +196,12 @@ export const setDipAgreed = (id: string, agreed: boolean, date: string) =>
 
 export const updateTripRoles = (tripId: string, roles: Partial<Record<TripRoleKey, RoleHolder>>) => call("updateTripRoles", { tripId, roles });
 
-export const addTripAccess = (tripId: string, email: string, name: string) =>
-  call<{ status: "added" | "pending" | "already" }>("addTripAccess", { tripId, email, name });
-export const removeTripAccess = (tripId: string, target: { uid?: string; email?: string }) => call("removeTripAccess", { tripId, ...target });
+/** Give someone additional access: a person picked from the directory (uid) or an email. */
+export const addTripAccess = (tripId: string, target: { uid?: string; email?: string }) =>
+  call<{ status: "added" | "pending" | "already" }>("addTripAccess", { tripId, ...target });
+/** HOST removes additional access; people still in a role / on a flight / the requester keep it. */
+export const removeTripAccess = (tripId: string, target: { uid?: string; email?: string }) =>
+  call<{ stillOnTripAs: string[] }>("removeTripAccess", { tripId, ...target });
 
 // ---- Planning items (flights, hotels, cars, assets) --------------------------------------------
 
@@ -486,7 +492,43 @@ export const removeTripContact = (tripId: string, id: string) => deleteDoc(doc(d
 
 // ---- HOST administration ------------------------------------------------------------------------
 
-export const setHostRole = (email: string, host: boolean) => call<{ uid: string }>("setHostRole", { email, host });
+export const setRole = (email: string, role: "host" | "controller", on: boolean) => call<{ uid: string }>("setRole", { email, role, on });
+
+// ---- Directory (owner, 2026-11-10): people pickers search everyone signed up ---------------------
+
+export interface DirectoryPerson { uid: string; name: string; email: string }
+export function useDirectory(): DirectoryPerson[] | null {
+  const [list, setList] = useState<DirectoryPerson[] | null>(null);
+  useEffect(() => onSnapshot(collection(db, "directory"), (snap) =>
+    setList(snap.docs.map((d) => ({ uid: d.id, name: str(d.get("name")), email: str(d.get("email")) })).filter((p) => p.name)), () => setList([])), []);
+  return list;
+}
+/** Keep my directory entry current (name + the email I signed in with). */
+export const upsertDirectory = (s: Session) =>
+  setDoc(doc(db, "directory", s.uid), { name: s.name.slice(0, 80) || s.email, email: s.email, updatedAt: serverTimestamp() });
+
+// ---- Controllers: every live trip (basic details only) --------------------------------------------
+
+export function useControllerLiveTrips(s: Session): Trip[] | null {
+  const [list, setList] = useState<Trip[] | null>(s.isController ? null : []);
+  useEffect(() => {
+    if (!s.isController) { setList([]); return; }
+    let live = true;
+    const load = () => call<{ trips: Record<string, unknown>[] }>("listLiveTrips").then((r) => {
+      if (!live) return;
+      setList(r.trips.map((t) => ({
+        id: str(t.id), name: str(t.name), teamName: str(t.teamName), location: str(t.location), startDate: str(t.startDate), endDate: str(t.endDate),
+        status: (t.status === "live" ? "live" : "planning") as TripStatus, cyberRisk: str(t.cyberRisk), cyberRationale: "", countryRisk: str(t.countryRisk),
+        countryRationale: "", roles: (t.roles ?? {}) as Trip["roles"], memberUids: [], pendingEmails: [], requestId: null, createdByName: "", createdByEmail: "",
+        dipAgreed: false, dipAgreedDate: "", dipClassification: "", updatedByName: "", updatedAtMs: 0, createdAtMs: 0,
+      })));
+    }, () => { if (live) setList([]); });
+    load();
+    const t = window.setInterval(load, 60_000);
+    return () => { live = false; window.clearInterval(t); };
+  }, [s.uid, s.isController]);
+  return list;
+}
 
 // ---- Financial debrief ------------------------------------------------------------------------
 // Each traveller keeps their own entries and notes; everyone on the trip can read them, only the
@@ -560,7 +602,7 @@ export async function loadTripSnapshot(tripId: string): Promise<TripSnapshot> {
   const db0 = v(debrief);
   return {
     trip: toTrip(t),
-    members: members.docs.map((d) => ({ uid: d.id, name: str(v(d).name), email: str(v(d).email), addedByName: str(v(d).addedByName), addedAtMs: ms(v(d).addedAt) })),
+    members: members.docs.map((d) => ({ uid: d.id, name: str(v(d).name), email: str(v(d).email), reasons: Array.isArray(v(d).reasons) ? v(d).reasons.map(String) : [], addedByName: str(v(d).addedByName), addedAtMs: ms(v(d).addedAt) })),
     items: { flights: items(flights), hotels: items(hotels), cars: items(cars), assets: items(assets) },
     messages: messages.docs.map((d) => ({ id: d.id, senderUid: str(v(d).senderUid), senderName: str(v(d).senderName), text: str(v(d).text), createdAtMs: ms(v(d).createdAt), pending: false }))
       .sort((a, b) => a.createdAtMs - b.createdAtMs),
