@@ -117,7 +117,7 @@ export function useDirectory(): DirectoryPerson[] | null {
 export const upsertDirectory = async (_s: Session) => undefined; // demo: accounts are the directory
 
 /** Recompute who is part of a trip from requester, roles, flight passengers and additional access. */
-export async function recomputeAccess(tripId: string) {
+export async function recomputeAccess(tripId: string, skipNotify: string[] = []) {
   const t = await be().get(`trips/${tripId}`);
   if (!t) return null;
   const [flights, memberDocs] = await Promise.all([be().list(`trips/${tripId}/flights`), be().list(`trips/${tripId}/members`)]);
@@ -155,6 +155,12 @@ export async function recomputeAccess(tripId: string) {
     await be().set(`trips/${tripId}/members/${uid}`, { name: m.name, email: m.email, reasons: m.reasons, addedAt: known.get(uid)?.addedAt ?? now() });
   }
   for (const d of memberDocs) if (!result.members[d.id]) await be().del(`trips/${tripId}/members/${d.id}`);
+  const before = new Set((t.data.memberUids ?? []) as string[]);
+  const added = result.memberUids.filter((u) => !before.has(u) && !skipNotify.includes(u));
+  if (added.length) await notifyDemo(added, {
+    type: "trip_added", title: "Added to a trip", body: `You've been added to ${str(t.data.name) || "a trip"} (${str(t.data.location)}).`,
+    tripId, link: `/trips/${tripId}`,
+  });
   return result;
 }
 
@@ -303,15 +309,36 @@ export async function removeTripAccess(tripId: string, target: { uid?: string; e
 
 export interface Item { id: string; values: Record<string, unknown>; createdByName: string; updatedAtMs: number }
 const toItem = (s: Snap): Item => {
-  const { createdAt: _c, updatedAt, createdBy: _b, createdByName, ...values } = s.data;
+  const { createdAt: _c, updatedAt, createdBy: _b, updatedBy: _u, createdByName, ...values } = s.data;
   return { id: s.id, values, createdByName: str(createdByName), updatedAtMs: ms(updatedAt) };
 };
 export const useItems = (tripId: string, coll: string) => useColl(`trips/${tripId}/${coll}`, { orderBy: ["createdAt", "asc"] }, toItem, `${tripId}/${coll}`);
-const afterFlights = (tripId: string, coll: string) => (coll === "flights" ? recomputeAccess(tripId).then(() => undefined) : Promise.resolve());
-export const addItem = (s: Session, tripId: string, coll: string, values: Record<string, unknown>) =>
-  be().set(`trips/${tripId}/${coll}/${be().newId()}`, { ...values, createdBy: s.uid, createdByName: s.name.slice(0, 80), createdAt: now(), updatedAt: now() }).then(() => afterFlights(tripId, coll));
-export const updateItem = (tripId: string, coll: string, id: string, values: Record<string, unknown>, keys: string[]) =>
-  be().patch(`trips/${tripId}/${coll}/${id}`, { ...Object.fromEntries(keys.map((k) => [k, k in values ? values[k] : DELETE])), updatedAt: now() }).then(() => afterFlights(tripId, coll));
+const passengerUids = (v: Record<string, unknown> | undefined) => new Set(((v?.passengers ?? []) as { uid?: string }[]).map((p) => p?.uid ?? "").filter(Boolean));
+async function afterFlights(tripId: string, coll: string, before?: Set<string>, id?: string) {
+  if (coll !== "flights") return;
+  const after = id ? passengerUids((await be().get(`trips/${tripId}/flights/${id}`))?.data) : new Set<string>();
+  const booked = [...after].filter((u) => !(before ?? new Set()).has(u));
+  await recomputeAccess(tripId, booked);
+  if (booked.length && id) {
+    const f = (await be().get(`trips/${tripId}/flights/${id}`))!.data;
+    const t = await be().get(`trips/${tripId}`);
+    await notifyDemo(booked, {
+      type: "flight_added", title: "Booked on a flight",
+      body: `${flightLabel(f)} ${[f.from, f.to].filter(Boolean).join(" → ")}${f.departAt ? `, ${String(f.departAt).replace("T", " ")}` : ""} — ${str(t?.data.name) || "your trip"}.`,
+      tripId, link: `/trips/${tripId}/flights`,
+    });
+  }
+}
+export async function addItem(s: Session, tripId: string, coll: string, values: Record<string, unknown>) {
+  const id = be().newId();
+  await be().set(`trips/${tripId}/${coll}/${id}`, { ...values, createdBy: s.uid, createdByName: s.name.slice(0, 80), createdAt: now(), updatedAt: now(), updatedBy: s.uid });
+  await afterFlights(tripId, coll, new Set(), id);
+}
+export async function updateItem(tripId: string, coll: string, id: string, values: Record<string, unknown>, keys: string[]) {
+  const before = coll === "flights" ? passengerUids((await be().get(`trips/${tripId}/${coll}/${id}`))?.data) : undefined;
+  await be().patch(`trips/${tripId}/${coll}/${id}`, { ...Object.fromEntries(keys.map((k) => [k, k in values ? values[k] : DELETE])), updatedAt: now(), updatedBy: be().uid });
+  await afterFlights(tripId, coll, before, id);
+}
 export const deleteItem = (tripId: string, coll: string, id: string) => be().del(`trips/${tripId}/${coll}/${id}`).then(() => afterFlights(tripId, coll));
 
 
@@ -327,8 +354,14 @@ const toMsg = (s: Snap): ChatMessage => ({
   createdAtMs: ms(s.data.createdAt) || now(), pending: s.pending,
 });
 export const useMessages = (tripId: string) => useColl(`trips/${tripId}/messages`, { orderBy: ["createdAt", "asc"] }, toMsg, tripId);
-export const sendMessage = (s: Session, tripId: string, text: string) =>
-  be().set(`trips/${tripId}/messages/${be().newId()}`, { senderUid: s.uid, senderName: s.name.slice(0, 80), text, createdAt: now() });
+export async function sendMessage(s: Session, tripId: string, text: string) {
+  await be().set(`trips/${tripId}/messages/${be().newId()}`, { senderUid: s.uid, senderName: s.name.slice(0, 80), text, createdAt: now() });
+  const t = await be().get(`trips/${tripId}`);
+  await notifyDemo((t?.data.memberUids ?? []) as string[], {
+    type: "message", title: `${s.name || "New message"} · ${str(t?.data.name) || "Trip"}`, body: text.length > 140 ? `${text.slice(0, 137)}…` : text,
+    tripId, link: `/trips/${tripId}/messages`,
+  });
+}
 export const deleteMessage = (tripId: string, id: string) => be().del(`trips/${tripId}/messages/${id}`);
 
 export function useReadAt(uid: string, tripId: string): number | null {
@@ -606,4 +639,26 @@ export async function claimInvitedAccount(email: string): Promise<Partial<RolePr
 export async function myTripReasons(tripId: string, uid: string): Promise<string[]> {
   const d = await be().get(`trips/${tripId}/members/${uid}`);
   return Array.isArray(d?.data.reasons) ? (d!.data.reasons as unknown[]).map(String) : [];
+}
+
+// ---- Notifications (demo: in-app inbox only — an artifact can't receive push) -------------------
+
+export interface AppNotification { id: string; type: string; title: string; body: string; tripId: string; link: string; read: boolean; createdAtMs: number }
+export const useNotifications = (uid: string) =>
+  useColl(`users/${uid}/notifications`, { orderBy: ["createdAt", "desc"] }, (s) => ({
+    id: s.id, type: str(s.data.type), title: str(s.data.title), body: str(s.data.body), tripId: str(s.data.tripId), link: str(s.data.link),
+    read: s.data.read === true, createdAtMs: ms(s.data.createdAt),
+  }), uid);
+export const markNotificationRead = (uid: string, id: string) => be().patch(`users/${uid}/notifications/${id}`, { read: true });
+export const clearNotification = (uid: string, id: string) => be().del(`users/${uid}/notifications/${id}`);
+export type PushState = "unsupported" | "blocked" | "off" | "on";
+export const pushState = async (): Promise<PushState> => "unsupported";
+export const enablePush = async (_uid: string): Promise<PushState> => "unsupported";
+export const disablePush = async (_uid: string) => undefined;
+
+/** What the Cloud Functions do in production: write the inbox entries (never to the actor). */
+async function notifyDemo(uids: string[], note: { type: string; title: string; body: string; tripId: string; link: string }) {
+  for (const uid of new Set(uids.filter((u) => u && u !== be().uid))) {
+    await be().set(`users/${uid}/notifications/${be().newId()}`, { ...note, read: false, createdAt: now() });
+  }
 }

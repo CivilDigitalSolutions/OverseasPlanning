@@ -73,3 +73,11 @@ describe("account manager", () => {
     assert.deepEqual(cleanRoleProfiles(null), { host: false, controller: false, spc: false, admin: false });
   });
 });
+
+describe("notifications", () => {
+  const { recipients } = require("../lib/lib/notify");
+  it("tells everyone involved except whoever caused it, once each", () => {
+    assert.deepEqual(recipients(["a", "b", "a", "", "me"], "me"), ["a", "b"]);
+    assert.deepEqual(recipients(["a"], null), ["a"]);
+  });
+});

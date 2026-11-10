@@ -4,13 +4,14 @@
  */
 import { onIdTokenChanged, type User } from "firebase/auth";
 import {
-  addDoc, collection, deleteDoc, deleteField, doc, getDoc, getDocs, onSnapshot, orderBy, query, serverTimestamp, setDoc, updateDoc, where,
+  addDoc, collection, deleteDoc, deleteField, doc, getDoc, getDocs, limit, onSnapshot, orderBy, query, serverTimestamp, setDoc, updateDoc, where,
   type DocumentData, type DocumentSnapshot, type Timestamp,
 } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
 import { deleteObject, getDownloadURL, ref as storageRef, uploadBytesResumable } from "firebase/storage";
 import { useEffect, useState } from "react";
-import { auth, db, functions, storage } from "./firebase";
+import { app, auth, db, functions, storage } from "./firebase";
+import { getMessaging, getToken, isSupported } from "firebase/messaging";
 import {
   EMPTY_DEBRIEF, MAX_ATTACHMENT_BYTES, PRIVACY_VERSION, TERMS_VERSION, safeFileName,
   REQUEST_KINDS, type ChatMessage, type Contact, type ContactInput, type TripContact, type Debrief, type FinanceEntry, type RequestKind, type TlRequestStatus,
@@ -212,7 +213,7 @@ export interface Item { id: string; values: Record<string, unknown>; createdByNa
 export function useItems(tripId: string, coll: string): Item[] | null {
   const [list, setList] = useState<Item[] | null>(null);
   useEffect(() => onSnapshot(query(collection(db, "trips", tripId, coll), orderBy("createdAt", "asc")), (snap) => setList(snap.docs.map((d) => {
-    const { createdAt: _c, updatedAt, createdBy: _b, createdByName, ...values } = dataOf(d);
+    const { createdAt: _c, updatedAt, createdBy: _b, updatedBy: _u, createdByName, ...values } = dataOf(d);
     return { id: d.id, values, createdByName: str(createdByName), updatedAtMs: ms(updatedAt) };
   })), () => setList([])), [tripId, coll]);
   return list;
@@ -220,14 +221,14 @@ export function useItems(tripId: string, coll: string): Item[] | null {
 
 export const addItem = (s: Session, tripId: string, coll: string, values: Record<string, unknown>) =>
   addDoc(collection(db, "trips", tripId, coll), {
-    ...values, createdBy: s.uid, createdByName: s.name.slice(0, 80), createdAt: serverTimestamp(), updatedAt: serverTimestamp(),
+    ...values, createdBy: s.uid, createdByName: s.name.slice(0, 80), createdAt: serverTimestamp(), updatedAt: serverTimestamp(), updatedBy: s.uid,
   });
 
 /** Full replacement of the item's own fields (set with merge:false would lose createdBy, so rebuild). */
 export const updateItem = (tripId: string, coll: string, id: string, values: Record<string, unknown>, keys: string[]) =>
   updateDoc(doc(db, "trips", tripId, coll, id), {
     ...Object.fromEntries(keys.map((k) => [k, k in values ? values[k] : deleteField()])),
-    updatedAt: serverTimestamp(),
+    updatedAt: serverTimestamp(), updatedBy: auth.currentUser?.uid ?? "",
   });
 
 export const deleteItem = (tripId: string, coll: string, id: string) => deleteDoc(doc(db, "trips", tripId, coll, id));
@@ -598,7 +599,7 @@ export async function loadTripSnapshot(tripId: string): Promise<TripSnapshot> {
     return mine?.exists() ? [toVacc(mine)] : [];
   });
   const items = (snap: Awaited<ReturnType<typeof sub>>): Item[] => snap.docs.map((d) => {
-    const { createdAt, updatedAt, createdBy: _b, createdByName, ...values } = dataOf(d);
+    const { createdAt, updatedAt, createdBy: _b, updatedBy: _u, createdByName, ...values } = dataOf(d);
     return { id: d.id, values, createdByName: str(createdByName), updatedAtMs: ms(updatedAt) || ms(createdAt) };
   });
   const v = (d: DocumentSnapshot) => dataOf(d);
@@ -644,4 +645,46 @@ export async function myTripReasons(tripId: string, uid: string): Promise<string
   const d = await getDoc(doc(db, "trips", tripId, "members", uid)).catch(() => null);
   const r = d?.exists() ? d.get("reasons") : null;
   return Array.isArray(r) ? r.map(String) : [];
+}
+
+// ---- Notifications (owner, 2026-11-10): added to a trip, booked on a flight, new message ----------
+
+export interface AppNotification { id: string; type: string; title: string; body: string; tripId: string; link: string; read: boolean; createdAtMs: number }
+
+export function useNotifications(uid: string): AppNotification[] | null {
+  const [list, setList] = useState<AppNotification[] | null>(null);
+  useEffect(() => onSnapshot(query(collection(db, "users", uid, "notifications"), orderBy("createdAt", "desc"), limit(50)), (snap) =>
+    setList(snap.docs.map((d) => {
+      const v = dataOf(d);
+      return { id: d.id, type: str(v.type), title: str(v.title), body: str(v.body), tripId: str(v.tripId), link: str(v.link), read: v.read === true, createdAtMs: ms(v.createdAt) };
+    })), () => setList([])), [uid]);
+  return list;
+}
+export const markNotificationRead = (uid: string, id: string) => updateDoc(doc(db, "users", uid, "notifications", id), { read: true });
+export const clearNotification = (uid: string, id: string) => deleteDoc(doc(db, "users", uid, "notifications", id));
+
+/** Push on this device: "unsupported" (browser/iOS not installed), "blocked", "off" or "on". */
+export type PushState = "unsupported" | "blocked" | "off" | "on";
+export async function pushState(): Promise<PushState> {
+  if (!("Notification" in window) || !("serviceWorker" in navigator) || !(await isSupported().catch(() => false))) return "unsupported";
+  if (Notification.permission === "denied") return "blocked";
+  return Notification.permission === "granted" && localStorage.getItem("op.pushToken") ? "on" : "off";
+}
+/** Ask permission, get this device's FCM token and register it for the signed-in person. */
+export async function enablePush(uid: string): Promise<PushState> {
+  if ((await pushState()) === "unsupported") return "unsupported";
+  const perm = await Notification.requestPermission();
+  if (perm !== "granted") return perm === "denied" ? "blocked" : "off";
+  const token = await getToken(getMessaging(app), {
+    vapidKey: import.meta.env.VITE_FB_VAPID_KEY, serviceWorkerRegistration: await navigator.serviceWorker.ready,
+  });
+  const id = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(token))), (b) => b.toString(16).padStart(2, "0")).join("").slice(0, 40);
+  await setDoc(doc(db, "users", uid, "pushTokens", id), { token, platform: navigator.userAgent.slice(0, 200), updatedAt: serverTimestamp() });
+  try { localStorage.setItem("op.pushToken", id); } catch { /* ignore */ }
+  return "on";
+}
+export async function disablePush(uid: string) {
+  const id = localStorage.getItem("op.pushToken");
+  if (id) await deleteDoc(doc(db, "users", uid, "pushTokens", id)).catch(() => undefined);
+  try { localStorage.removeItem("op.pushToken"); } catch { /* ignore */ }
 }

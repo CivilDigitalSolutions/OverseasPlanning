@@ -65,6 +65,18 @@ service cloud.firestore {
         allow read: if signedIn() && me() == uid;
         allow write: if false;
       }
+      // Notifications (owner, 2026-11-10): written by functions; the person reads them, marks them
+      // read and clears them. Push tokens: one per device the person switched on.
+      match /notifications/{id} {
+        allow read, delete: if signedIn() && me() == uid;
+        allow update: if signedIn() && me() == uid && changed().hasOnly(['read']) && d().read is bool;
+        allow create: if false;
+      }
+      match /pushTokens/{id} {
+        allow read, delete: if signedIn() && me() == uid;
+        allow create, update: if verified() && me() == uid && d().keys().hasOnly(['token', 'platform', 'updatedAt'])
+          && reqStr(d(), 'token', 4096) && optStr(d(), 'platform', 200) && d().updatedAt == request.time;
+      }
       match /tripReads/{tripId} {
         allow read: if signedIn() && me() == uid;
         allow write: if verified() && me() == uid && d().keys().hasOnly(['readAt']) && d().readAt == request.time;
@@ -151,7 +163,8 @@ service cloud.firestore {
       function spcFlightKeys() { return ['spcDecision', 'spcRationale', 'spcDecidedBy', 'spcDecidedByName', 'spcDecidedAt']; }
       function optIn(m, k, vals) { return !(k in m) || m[k] in vals; }
       function validItem(coll, m) {
-        return m.keys().hasOnly(itemKeys(coll).concat(['createdBy', 'createdByName', 'createdAt', 'updatedAt']))
+        return m.keys().hasOnly(itemKeys(coll).concat(['createdBy', 'createdByName', 'createdAt', 'updatedAt', 'updatedBy']))
+          && (!('updatedBy' in m) || m.updatedBy == request.auth.uid)
           && optStr(m, 'notes', 2000) && optStr(m, 'createdByName', 80)
           && optList(m, 'passengers', 100) && optList(m, 'guests', 100) && optList(m, 'drivers', 20)
           && optStr(m, 'flightNumber', 20) && optStr(m, 'airline', 80) && optStr(m, 'from', 80) && optStr(m, 'to', 80)

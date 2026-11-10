@@ -1,9 +1,10 @@
 import { onCall, HttpsError } from "firebase-functions/v2/https";
-import { onDocumentWritten } from "firebase-functions/v2/firestore";
+import { onDocumentCreated, onDocumentWritten } from "firebase-functions/v2/firestore";
 import { FieldValue, getFirestore } from "firebase-admin/firestore";
 import { assertHost, assertTripAccess, assertVerified } from "./lib/auth";
 import { MAX_MEMBERS, MAX_PENDING, verifiedUidFor } from "./lib/access";
-import { recomputeTripAccess } from "./lib/membership";
+import { flightLabel, recomputeTripAccess } from "./lib/membership";
+import { notify, recipients } from "./lib/notify";
 import { rateLimit } from "./lib/rateLimit";
 import { cleanEmail, isDocId } from "./lib/validate";
 
@@ -44,7 +45,7 @@ export const addTripAccess = onCall(async (req) => {
     if (pending.length >= MAX_PENDING) throw new HttpsError("resource-exhausted", "Too many pending invitations.");
     await trip.ref.update({ extraAccessEmails: FieldValue.arrayUnion(email) });
   }
-  await recomputeTripAccess(db, tripId);
+  await recomputeTripAccess(db, tripId, { actor: uid });
   return { status: targetUid ? "added" : "pending" };
 });
 
@@ -90,9 +91,41 @@ export const syncPendingAccess = onCall(async (req) => {
 
 /** Booking someone on a flight (or taking them off) changes who is part of the trip. */
 export const onFlightWritten = onDocumentWritten("trips/{tripId}/flights/{flightId}", async (event) => {
-  const passengersOf = (d: FirebaseFirestore.DocumentData | undefined) =>
-    JSON.stringify(((d?.passengers ?? []) as { uid?: string }[]).map((p) => p?.uid ?? "").sort());
-  // Only recompute when the set of booked people changed (cost/status edits don't affect access).
-  if (passengersOf(event.data?.before?.data()) === passengersOf(event.data?.after?.data())) return;
-  await recomputeTripAccess(getFirestore(), event.params.tripId);
+  const uidsOf = (d: FirebaseFirestore.DocumentData | undefined) =>
+    new Set(((d?.passengers ?? []) as { uid?: string }[]).map((p) => p?.uid ?? "").filter(Boolean));
+  const before = uidsOf(event.data?.before?.data());
+  const afterData = event.data?.after?.data();
+  const after = uidsOf(afterData);
+  // Only act when the set of booked people changed (cost/status edits don't affect access).
+  if (before.size === after.size && [...after].every((u) => before.has(u))) return;
+  const db = getFirestore();
+  const booked = [...after].filter((u) => !before.has(u));
+  const actor = typeof afterData?.updatedBy === "string" ? afterData.updatedBy : (afterData?.createdBy as string | undefined);
+  // "Booked on a flight" also covers being added to the trip by it: one notification, not two.
+  await recomputeTripAccess(db, event.params.tripId, { actor, skipNotify: booked });
+  const tell = recipients(booked, actor);
+  if (tell.length && afterData) {
+    const trip = await db.collection("trips").doc(event.params.tripId).get();
+    const route = [afterData.from, afterData.to].filter(Boolean).join(" → ");
+    await notify(db, tell, {
+      type: "flight_added", title: "Booked on a flight",
+      body: `${flightLabel(afterData)}${route ? ` ${route}` : ""}${afterData.departAt ? `, ${String(afterData.departAt).replace("T", " ")}` : ""} — ${trip.get("name") ?? "your trip"}.`,
+      tripId: event.params.tripId, link: `/trips/${event.params.tripId}/flights`,
+    });
+  }
+});
+
+/** New message on a trip: everyone on the trip except the sender. */
+export const onMessageCreated = onDocumentCreated("trips/{tripId}/messages/{messageId}", async (event) => {
+  const m = event.data?.data();
+  if (!m) return;
+  const db = getFirestore();
+  const trip = await db.collection("trips").doc(event.params.tripId).get();
+  if (!trip.exists) return;
+  const tell = recipients((trip.get("memberUids") ?? []) as string[], m.senderUid as string);
+  const text = String(m.text ?? "");
+  await notify(db, tell, {
+    type: "message", title: `${m.senderName || "New message"} · ${trip.get("name") || "Trip"}`,
+    body: text.length > 140 ? `${text.slice(0, 137)}…` : text, tripId: event.params.tripId, link: `/trips/${event.params.tripId}/messages`,
+  });
 });

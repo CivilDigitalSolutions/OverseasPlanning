@@ -20,5 +20,7 @@
 6. **First admin / HOST** — sign up in the app, confirm the email, then
    `GOOGLE_CLOUD_PROJECT=<id> node functions/scripts/grant-admin.js you@example.com --host`
    and sign out and in. Further HOST members are granted from Account → HOST team.
-7. **Terms and Privacy** — write the text in `web/src/Legal.tsx` and bump
+7. **Push notifications** — Firebase console → Project settings → Cloud Messaging → Web Push
+   certificates → Generate key pair; put the public key in `web/.env.local` as `VITE_FB_VAPID_KEY`.
+8. **Terms and Privacy** — write the text in `web/src/Legal.tsx` and bump
    `TERMS_VERSION` / `PRIVACY_VERSION` in `web/src/model.ts`.

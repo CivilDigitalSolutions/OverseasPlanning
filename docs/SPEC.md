@@ -235,7 +235,20 @@ only their own.
 - TODO(owner): required vaccinations per country; declaration wording (`DECLARATION_TEXT`);
   who may read (health data — DPIA); retention; how "travelling" differs from "has access".
 
-## 9. Notifications — TODO(owner)
+## 9. Notifications (owner, 2026-11-10)
+
+People are told when they are **added to a trip**, **booked on a flight** (one notification —
+"booked on a flight" covers being added to the trip by it) and when a **new message** arrives on a
+trip they are on (never about their own action). Server: `functions/src/lib/notify.ts`, called from
+the membership recompute, `onFlightWritten` and `onMessageCreated`.
+- **In-app inbox** `users/{uid}/notifications` (60-day TTL): bell with unread count in the top bar,
+  a Notifications page (tap to open the trip; mark all read; clear), and a pop-up banner for
+  anything arriving while the app is open. Works everywhere, including the claude.ai demo.
+- **Push** (Firebase Cloud Messaging web push): Account → "Notifications on this device" → Turn on
+  stores the device token in `users/{uid}/pushTokens`; the service worker (`web/src/sw.ts`) shows the
+  notification and opens the link when tapped. Dead tokens are pruned. **iPhone: web push needs the
+  app added to the Home Screen** (iOS 16.4+). The artifact demo can't receive push.
+- TODO(owner): notifications for request approvals/decisions, per-type mute, quiet hours.
 
 ## 10. Offline and installation
 

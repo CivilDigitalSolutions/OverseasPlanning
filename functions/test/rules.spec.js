@@ -332,6 +332,29 @@ describe("SPC role profile", () => {
     assertFails(updateDoc(doc(member(), "trips", TRIP, "tlRequests", "q1"), decide("alice"))));
 });
 
+describe("notifications and push tokens", () => {
+  beforeEach(() => env.withSecurityRulesDisabled((ctx) => setDoc(doc(ctx.firestore(), "users", "alice", "notifications", "n1"), { type: "message", title: "t", body: "b", read: false })));
+  it("N1 own inbox: read, mark read, clear; nobody writes notifications from a client", async () => {
+    await assertSucceeds(getDocs(collection(member(), "users", "alice", "notifications")));
+    await assertSucceeds(updateDoc(doc(member(), "users", "alice", "notifications", "n1"), { read: true }));
+    await assertFails(updateDoc(doc(member(), "users", "alice", "notifications", "n1"), { title: "forged" }));
+    await assertFails(setDoc(doc(member(), "users", "alice", "notifications", "n2"), { type: "message", title: "x", body: "y", read: false }));
+    await assertFails(getDocs(collection(leader(), "users", "alice", "notifications")));
+    await assertFails(setDoc(doc(leader(), "users", "alice", "notifications", "n3"), { type: "message", title: "x", body: "y", read: false }));
+    await assertSucceeds(deleteDoc(doc(member(), "users", "alice", "notifications", "n1")));
+  });
+  it("N2 push tokens: only your own", async () => {
+    await assertSucceeds(setDoc(doc(member(), "users", "alice", "pushTokens", "d1"), { token: "tok", platform: "Android", updatedAt: serverTimestamp() }));
+    await assertFails(setDoc(doc(leader(), "users", "alice", "pushTokens", "d2"), { token: "tok", platform: "x", updatedAt: serverTimestamp() }));
+    await assertFails(getDocs(collection(leader(), "users", "alice", "pushTokens")));
+  });
+  it("N3 a flight edit can only name the editor as updatedBy", async () => {
+    const f = { flightNumber: "X1", from: "A", to: "B", createdBy: "alice", createdAt: serverTimestamp(), updatedAt: serverTimestamp() };
+    await assertSucceeds(addDoc(collection(member(), "trips", TRIP, "flights"), { ...f, updatedBy: "alice" }));
+    await assertFails(addDoc(collection(member(), "trips", TRIP, "flights"), { ...f, updatedBy: "lead" }));
+  });
+});
+
 describe("request deletion", () => {
   it("16b creator withdraws while pending; afterwards only the SPC deletes (not HOST)", async () => {
     await assertFails(deleteDoc(doc(host(), "trips", TRIP, "tlRequests", "q1")));

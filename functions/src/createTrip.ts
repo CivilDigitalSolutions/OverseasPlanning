@@ -59,7 +59,7 @@ export const createTrip = onCall(async (req) => {
     tx.update(reqRef, { status: "accepted", tripId: tripRef.id, decidedBy: uid, decidedAt: FieldValue.serverTimestamp() });
   });
   // Members (with the reason each person is on the trip) come from the one access calculation.
-  await recomputeTripAccess(db, tripRef.id);
+  await recomputeTripAccess(db, tripRef.id, { actor: uid });
   return { tripId: tripRef.id };
 });
 
@@ -84,6 +84,6 @@ export const updateTripRoles = onCall(async (req) => {
   const tripRef = db.collection("trips").doc(tripId);
   await tripRef.update({ roles: resolved, updatedAt: FieldValue.serverTimestamp(), updatedBy: uid, updatedByName: hostName });
   // New role holders gain access; anyone no longer in a role (and not otherwise on the trip) loses it.
-  await recomputeTripAccess(db, tripId);
+  await recomputeTripAccess(db, tripId, { actor: uid });
   return { ok: true };
 });

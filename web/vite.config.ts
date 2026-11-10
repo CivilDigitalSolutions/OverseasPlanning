@@ -41,13 +41,11 @@ export default defineConfig(({ command, mode }) => {
             { src: "icons/icon-maskable-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
           ],
         },
-        workbox: {
-          // App shell only. Trip data is NOT cached by the service worker: Firestore keeps its own
-          // offline cache, and caching API responses here could leave sensitive data on a device.
-          globPatterns: ["**/*.{js,css,html,svg,png,woff2}"],
-          navigateFallback: "/index.html",
-          navigateFallbackDenylist: [/^\/__/],
-        },
+        // Custom service worker (src/sw.ts): app-shell caching + push notifications.
+        strategies: "injectManifest",
+        srcDir: "src",
+        filename: "sw.ts",
+        injectManifest: { globPatterns: ["**/*.{js,css,html,svg,png,woff2}"] },
       }),
     ],
   };

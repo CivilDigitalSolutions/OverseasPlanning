@@ -209,3 +209,13 @@ html.kb-open main, html.kb-open .modal { padding-bottom: 50vh; }
 .picker-results button:hover, .picker-results button:focus-visible { background: var(--primary-soft); }
 .picker-results .grow { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .picker-results .title { font-weight: 650; }
+
+/* ---- notifications ---- */
+.bell { position: relative; }
+.bell-count { position: absolute; top: 2px; right: 0; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: var(--bad); color: #fff; font-size: .68rem; font-weight: 800; line-height: 18px; text-align: center; }
+.list-item.unread { border-color: var(--primary); background: #F7FAFF; }
+.unread-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--primary); flex: none; }
+.toast { position: fixed; z-index: 60; left: max(12px, env(safe-area-inset-left, 0px)); right: max(12px, env(safe-area-inset-right, 0px)); top: calc(env(safe-area-inset-top, 0px) + 12px);
+  max-width: 520px; margin: 0 auto; display: flex; gap: 8px; align-items: center; background: var(--ink); color: #fff; border-radius: 14px; padding: 10px 10px 10px 14px; box-shadow: 0 8px 24px rgba(0,0,0,.25); }
+.toast-body { flex: 1; min-width: 0; display: grid; gap: 2px; text-align: left; background: none; border: 0; color: inherit; font: inherit; cursor: pointer; padding: 0; overflow-wrap: anywhere; }
+.toast .icon-btn { color: #fff; }

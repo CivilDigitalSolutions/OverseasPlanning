@@ -11,6 +11,7 @@
   ],
   "fieldOverrides": [
     { "collectionGroup": "rateLimits", "fieldPath": "expireAt", "ttl": true, "indexes": [] },
-    { "collectionGroup": "passkeyChallenges", "fieldPath": "expireAt", "ttl": true, "indexes": [] }
+    { "collectionGroup": "passkeyChallenges", "fieldPath": "expireAt", "ttl": true, "indexes": [] },
+    { "collectionGroup": "notifications", "fieldPath": "expireAt", "ttl": true, "indexes": [] }
   ]
 }

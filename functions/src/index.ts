@@ -5,7 +5,7 @@ initializeApp();
 
 export { recordAgreement } from "./recordAgreement";
 export { createTrip, updateTripRoles } from "./createTrip";
-export { addTripAccess, removeTripAccess, syncPendingAccess, onFlightWritten } from "./tripAccess";
+export { addTripAccess, removeTripAccess, syncPendingAccess, onFlightWritten, onMessageCreated } from "./tripAccess";
 export { listLiveTrips } from "./listLiveTrips";
 export { listAccounts, createAccount, setAccountRoles, deleteAccount } from "./adminAccounts";
 export { setHostRole, setRole } from "./setHostRole";

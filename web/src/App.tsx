@@ -16,7 +16,8 @@ import { Privacy, Terms } from "./Legal";
 import { CreateTrip, NewRequest, RequestsPage } from "./Requests";
 import { TripDetail } from "./TripDetail";
 import { TripList } from "./TripList";
-import { syncPendingAccess, upsertDirectory, useRequests, useSession, type Session } from "./store";
+import { NotificationBell, NotificationToast, NotificationsPage } from "./Notifications";
+import { syncPendingAccess, upsertDirectory, useNotifications, useRequests, useSession, type Session } from "./store";
 
 export function App() {
   const path = usePath();
@@ -49,6 +50,8 @@ function Shell({ session, pathname }: { session: Session; pathname: string }) {
     upsertDirectory(session).catch(() => undefined);
   }, [session.uid]); // eslint-disable-line react-hooks/exhaustive-deps
   const requests = useRequests(session);
+  const notifications = useNotifications(session.uid);
+  const unread = notifications?.filter((n) => !n.read).length ?? 0;
   const waiting = session.isHost ? (requests ?? []).filter((r) => r.status === "submitted").length : 0;
 
   const seg = pathname.split("/").filter(Boolean);
@@ -62,6 +65,7 @@ function Shell({ session, pathname }: { session: Session; pathname: string }) {
   else if (seg[0] === "requests") page = <RequestsPage session={session} requests={requests} />;
   else if (seg[0] === "account") page = <Account session={session} />;
   else if (seg[0] === "admin") page = <AdminAccounts session={session} />;
+  else if (seg[0] === "notifications") page = <NotificationsPage session={session} list={notifications} />;
   else page = <TripList session={session} status="planning" />;
 
   const nav = [
@@ -78,6 +82,7 @@ function Shell({ session, pathname }: { session: Session; pathname: string }) {
         <span className="spacer" />
         {session.isHost && <span className="badge info">HOST</span>}
         {session.isController && <span className="badge info">Controller</span>}
+        <NotificationBell unread={unread} />
         {session.isAdmin && <Link to="/admin" className="icon-btn"><span className="sr-only">Accounts (settings)</span><span style={{ color: "#fff" }}><Icon name="cog" /></span></Link>}
         <Link to="/account" className="icon-btn"><span className="sr-only">Account</span><span style={{ color: "#fff" }}><Icon name="user" /></span></Link>
         <button className="icon-btn" aria-label="Sign out" onClick={() => signOut(auth)}><span style={{ color: "#fff" }}><Icon name="logout" /></span></button>
@@ -87,6 +92,7 @@ function Shell({ session, pathname }: { session: Session; pathname: string }) {
           <Link key={n.to} to={n.to} current={n.on}>{n.label}{n.count ? <span className="count">{n.count}</span> : null}</Link>
         ))}
       </nav>
+      <NotificationToast session={session} list={notifications} />
       <main>{page}</main>
       <InstallPrompt />
     </div>
