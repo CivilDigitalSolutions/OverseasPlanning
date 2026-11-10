@@ -15,13 +15,15 @@ const as = (uid, claims = {}) => env.authenticatedContext(uid, { email: `${uid}@
 const host = () => as("host", { host: true });
 const member = () => as("alice");
 const leader = () => as("lead");
+const spc = () => as("spc");
 const outsider = () => as("eve");
 const unverified = () => env.authenticatedContext("alice", { email: "alice@x.com", email_verified: false }).firestore();
 
 const tripDoc = (members) => ({
   name: "Trip", teamName: "Alpha", location: "Paris", startDate: "2026-05-01", endDate: "2026-05-07", status: "planning",
   cyberRisk: "Low", cyberRationale: "r", countryRisk: "Low", countryRationale: "r",
-  roles: { teamLeader: { name: "Lead", email: "lead@x.com", uid: "lead" } }, memberUids: members, pendingEmails: [],
+  roles: { teamLeader: { name: "Lead", email: "lead@x.com", uid: "lead" }, spc: { name: "Sam", email: "spc@x.com", uid: "spc" } },
+  memberUids: members, pendingEmails: [],
 });
 
 before(async () => {
@@ -35,7 +37,7 @@ beforeEach(async () => {
   await env.clearFirestore();
   await env.withSecurityRulesDisabled(async (ctx) => {
     const db = ctx.firestore();
-    await setDoc(doc(db, "trips", TRIP), tripDoc(["alice", "lead"]));
+    await setDoc(doc(db, "trips", TRIP), tripDoc(["alice", "lead", "spc"]));
     await setDoc(doc(db, "trips", OTHER), tripDoc(["bob"]));
     await setDoc(doc(db, "tripRequests", "r1"), { teamName: "A", startDate: "2026-01-01", endDate: "2026-01-02", location: "X", requesterUid: "alice", requesterEmail: "alice@x.com", status: "submitted" });
     await setDoc(doc(db, "trips", TRIP, "tlRequests", "q1"), { kind: "cash", title: "Float", createdBy: "alice", status: "pending", amount: 100, currency: "GBP" });
@@ -110,6 +112,15 @@ describe("planning items, messages, attachments", () => {
     await assertFails(addDoc(collection(member(), "trips", TRIP, "secrets"), flight("alice")));
     await assertFails(addDoc(collection(member(), "trips", TRIP, "flights"), flight("bob")));
   });
+  it("11b booking cost needs a currency; hire car fields validated", async () => {
+    await assertSucceeds(addDoc(collection(member(), "trips", TRIP, "hotels"), { name: "H", cost: 412.5, costCurrency: "EUR", guests: ["A"], createdBy: "alice", createdAt: serverTimestamp(), updatedAt: serverTimestamp() }));
+    await assertFails(addDoc(collection(member(), "trips", TRIP, "hotels"), { name: "H", cost: 412.5, createdBy: "alice", createdAt: serverTimestamp(), updatedAt: serverTimestamp() }));
+    await assertFails(addDoc(collection(member(), "trips", TRIP, "flights"), { ...flight("alice"), cost: "lots", costCurrency: "GBP" }));
+    const car = { company: "Hertz", insuranceClass: "Group C", collectionLocation: "LIS", collectionDate: "2026-12-01", dropOffLocation: "LIS", dropOffDate: "2026-12-08", cost: 250, costCurrency: "EUR", drivers: ["A"], createdBy: "alice", createdAt: serverTimestamp(), updatedAt: serverTimestamp() };
+    await assertSucceeds(addDoc(collection(member(), "trips", TRIP, "cars"), car));
+    await assertFails(addDoc(collection(member(), "trips", TRIP, "cars"), { ...car, collectionDate: "1 Dec" }));
+    await assertFails(addDoc(collection(member(), "trips", TRIP, "cars"), { ...car, pickUpAt: "2026-12-01T10:00" }));
+  });
   it("12 messages: post as yourself, delete your own only", async () => {
     const ref = await assertSucceeds(addDoc(collection(member(), "trips", TRIP, "messages"), { senderUid: "alice", senderName: "A", text: "hi", createdAt: serverTimestamp() }));
     await assertFails(addDoc(collection(member(), "trips", TRIP, "messages"), { senderUid: "lead", text: "fake", createdAt: serverTimestamp() }));
@@ -132,18 +143,22 @@ describe("requests to the Team Leader (approval)", () => {
     await assertFails(addDoc(collection(member(), "trips", TRIP, "tlRequests"), { ...q(), kind: "pony" }));
     await assertFails(addDoc(collection(member(), "trips", TRIP, "tlRequests"), { ...q(), kind: "cash", amount: 50 })); // no currency
   });
-  it("15 only the Team Leader or HOST approves; the requester cannot", async () => {
+  it("15 ONLY the SPC approves — not the requester, the Team Leader or HOST", async () => {
     const decide = (uid) => ({ status: "approved", decidedBy: uid, decidedByName: "x", decidedAt: serverTimestamp() });
     await assertFails(updateDoc(doc(member(), "trips", TRIP, "tlRequests", "q1"), decide("alice")));
-    await assertSucceeds(updateDoc(doc(leader(), "trips", TRIP, "tlRequests", "q1"), decide("lead")));
+    await assertFails(updateDoc(doc(leader(), "trips", TRIP, "tlRequests", "q1"), decide("lead")));
+    await assertFails(updateDoc(doc(host(), "trips", TRIP, "tlRequests", "q1"), decide("host")));
+    await assertFails(updateDoc(doc(as("spc2"), "trips", OTHER, "tlRequests", "q1"), decide("spc2"))); // cross-trip
+    await assertSucceeds(updateDoc(doc(spc(), "trips", TRIP, "tlRequests", "q1"), decide("spc")));
   });
   it("16 completion only after approval; resubmit only by creator after rejection", async () => {
     const complete = { status: "completed", completedBy: "lead", completedByName: "L", completedAt: serverTimestamp() };
     await assertFails(updateDoc(doc(leader(), "trips", TRIP, "tlRequests", "q1"), complete)); // still pending
-    await assertSucceeds(updateDoc(doc(host(), "trips", TRIP, "tlRequests", "q1"), { status: "rejected", decidedBy: "host", decidedAt: serverTimestamp(), decisionNote: "No" }));
+    await assertSucceeds(updateDoc(doc(spc(), "trips", TRIP, "tlRequests", "q1"), { status: "rejected", decidedBy: "spc", decidedAt: serverTimestamp(), decisionNote: "No" }));
     await assertFails(updateDoc(doc(leader(), "trips", TRIP, "tlRequests", "q1"), { status: "pending", decidedBy: deleteField(), decidedAt: deleteField(), decisionNote: deleteField() }));
     await assertSucceeds(updateDoc(doc(member(), "trips", TRIP, "tlRequests", "q1"), { status: "pending", decidedBy: deleteField(), decidedAt: deleteField(), decisionNote: deleteField() }));
-    await assertSucceeds(updateDoc(doc(leader(), "trips", TRIP, "tlRequests", "q1"), { status: "approved", decidedBy: "lead", decidedAt: serverTimestamp() }));
+    await assertFails(updateDoc(doc(leader(), "trips", TRIP, "tlRequests", "q1"), { status: "approved", decidedBy: "lead", decidedAt: serverTimestamp() }));
+    await assertSucceeds(updateDoc(doc(spc(), "trips", TRIP, "tlRequests", "q1"), { status: "approved", decidedBy: "spc", decidedAt: serverTimestamp() }));
     await assertSucceeds(updateDoc(doc(leader(), "trips", TRIP, "tlRequests", "q1"), complete));
   });
 });

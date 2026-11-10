@@ -37,6 +37,8 @@ A mobile-first, installable web app (PWA) to request, plan, run and debrief over
    shown to the requester) or **creates the trip** on one screen:
    - Cyber risk (drop-down) + rationale; Country risk (drop-down) + rationale.
    - Basic roles: **Team Leader, Office Manager, SPC, Intel Worker** (name + email each).
+   - The trip records the HOST member who created it (`createdByName`, `createdByEmail`), shown on
+     the Overview as "Created by (HOST)" and in the PDF.
 3. **Planning → Live → Archived** — status is set by HOST or the trip's Team Leader. A hint
    appears when the dates say it should move; it is never changed automatically.
 4. Lists: **Planning**, **Live trips**, **Archived**. Planning and Archived are the same view;
@@ -79,11 +81,16 @@ Storage: `trips/{tripId}/attachments/{attId}/{fileName}` (≤ 25 MB, members onl
 Single trip screen with tab navigation: Overview · Flights · Hotels · Hire cars · Assets ·
 Requests · Messages · Attachments · Vaccinations · Access · Debrief, plus **PDF export**.
 
-- **Flights**: airline, flight number, from, to, departs, arrives, booking ref, **resources on the
-  flight** (one per line), notes.
-- **Hotels**: name, address, city, phone, check-in/out, booking ref, guests, notes.
-- **Hire cars**: company, vehicle, registration, pick-up/drop-off location and time, booking ref,
-  named drivers, notes.
+- **Flights**: airline, flight number, from, to, departs, arrives, booking ref, **cost of booking**
+  (amount + currency), **named persons**, notes.
+- **Hotels**: name, address, city, phone, check-in/out, booking ref, **cost of booking**,
+  **named persons**, notes.
+- **Hire cars** (owner, 2026-11-10): **hire car company**, vehicle, **insurance class**,
+  registration, **collection location + date**, **drop-off location + date** (not before
+  collection), booking ref, **cost of booking**, named drivers, notes.
+- Named persons are added one name at a time, with quick-picks from the trip's role holders and
+  people with access; stored as a list of names. Costs are stored as `cost` (number) +
+  `costCurrency`; the rules refuse a cost without a currency.
 - **Assets** (taken overseas): asset, category, serial/asset number, quantity, carried by,
   returned after the trip, notes.
 - **TODO(owner): confirm the field lists** (keep `ITEM_SCHEMAS` and the rules' `itemKeys` in step).
@@ -102,11 +109,14 @@ Requests · Messages · Attachments · Vaccinations · Access · Debrief, plus *
 - **Requests to the Team Leader, with approval**:
   - Types: **Resource (people), Flight, Hotel, Hire car, Asset, Cash** (cash adds amount +
     currency; people/assets add quantity; all have needed-by and details).
-  - Workflow: **Awaiting approval → Approved / Rejected → Completed**. The Team Leader or HOST
-    approves/rejects (with a note) and marks approved requests completed (with an outcome).
+  - Workflow: **Awaiting approval → Approved / Rejected → Completed**. **Only the trip's SPC
+    approves or rejects** (with a note) — not HOST, not the Team Leader (owner decision
+    2026-11-10; enforced in `firestore.rules` `isSpc`). The SPC, Team Leader or HOST marks an
+    approved request completed (with an outcome).
     The requester may resubmit a rejected request. Each request is listed individually with a
     status badge; the tab shows a count of open items (awaiting approval or approved-not-done).
-  - TODO(owner): may a Team Leader approve their own request? Approval limits for cash? Should an
+  - TODO(owner): may the SPC approve their own request? Who approves when the trip has no SPC
+    with an account yet (today: nobody)? Who may mark a request completed? Approval limits for cash? Should an
     approved flight/hotel/car/asset automatically create the planning item?
 - **Export**: "PDF" on the trip header exports every section (overview, roles, access, flights,
   hotels, cars, assets, requests + decisions, vaccination declarations the exporter may read,

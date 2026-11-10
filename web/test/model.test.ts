@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  ITEM_SCHEMAS, cleanInjuryRefs, cleanItem, cleanVaccines, financeTotals, firstUnreadIndex, openCount, parseAmount, safeFileName,
+  ITEM_SCHEMAS, addPerson, cleanInjuryRefs, displayValue, cleanItem, cleanVaccines, financeTotals, firstUnreadIndex, openCount, parseAmount, safeFileName,
   sortTlRequests, startsRun, statusHint, tripMatches, tripsFor, validateRequest, validateTlRequest,
   type ChatMessage, type FinanceEntry, type TlRequest, type Trip,
 } from "../src/model.ts";
@@ -9,7 +9,7 @@ import {
 const trip = (o: Partial<Trip>): Trip => ({
   id: "t", name: "", teamName: "Alpha", location: "Paris, France", startDate: "2026-05-01", endDate: "2026-05-07", status: "planning",
   cyberRisk: "Low", cyberRationale: "", countryRisk: "Medium", countryRationale: "", roles: {}, memberUids: [], pendingEmails: [],
-  requestId: null, createdAtMs: 0, ...o,
+  requestId: null, createdByName: "", createdByEmail: "", createdAtMs: 0, ...o,
 });
 
 test("request validation", () => {
@@ -39,7 +39,7 @@ test("status hints", () => {
 });
 
 test("cleanItem: required, lists, numbers, checkbox", () => {
-  const r = cleanItem(ITEM_SCHEMAS.flights, { flightNumber: "BA1", from: "LHR", to: "", passengers: "A\n\n B " });
+  const r = cleanItem(ITEM_SCHEMAS.flights, { flightNumber: "BA1", from: "LHR", to: "", passengers: ["A", "", " B "] });
   assert.ok(r.errors.to);
   assert.deepEqual(r.value.passengers, ["A", "B"]);
   const a = cleanItem(ITEM_SCHEMAS.assets, { name: "Laptop", quantity: "2", returned: true });
@@ -99,4 +99,28 @@ test("safe file names", () => {
   assert.equal(safeFileName("../../etc/passwd"), ".._.._etc_passwd");
   assert.equal(safeFileName("Itinerary (final).pdf"), "Itinerary _final_.pdf");
   assert.equal(safeFileName("///"), "_");
+});
+
+test("booking cost: amount + currency, defaulting to GBP; bad amounts refused", () => {
+  const h = cleanItem(ITEM_SCHEMAS.hotels, { name: "H", cost: "£1,240.5" });
+  assert.deepEqual([h.value.cost, h.value.costCurrency], [1240.5, "GBP"]);
+  const f = cleanItem(ITEM_SCHEMAS.flights, { flightNumber: "X1", from: "A", to: "B", cost: "300", costCurrency: "EUR" });
+  assert.equal(f.value.costCurrency, "EUR");
+  assert.ok(cleanItem(ITEM_SCHEMAS.cars, { company: "Hertz", cost: "lots" }).errors.cost);
+  assert.equal("costCurrency" in cleanItem(ITEM_SCHEMAS.cars, { company: "Hertz" }).value, false);
+  assert.equal(displayValue(ITEM_SCHEMAS.hotels.fields.find((x) => x.key === "cost")!, h.value), "£1,240.50");
+});
+
+test("hire car: collection/drop-off dates in order", () => {
+  const ok = cleanItem(ITEM_SCHEMAS.cars, { company: "Hertz", insuranceClass: "Group C", collectionDate: "2026-12-01", dropOffDate: "2026-12-08" });
+  assert.deepEqual(ok.errors, {});
+  assert.ok(cleanItem(ITEM_SCHEMAS.cars, { company: "Hertz", collectionDate: "2026-12-08", dropOffDate: "2026-12-01" }).errors.dropOffDate);
+  assert.ok(cleanItem(ITEM_SCHEMAS.hotels, { name: "H", checkIn: "2026-12-08", checkOut: "2026-12-01" }).errors.checkOut);
+});
+
+test("named persons: trimmed, no duplicates, capped", () => {
+  assert.deepEqual(addPerson(["Jane Smith"], "  jane   smith "), ["Jane Smith"]);
+  assert.deepEqual(addPerson(["A"], " Alex  Brown "), ["A", "Alex Brown"]);
+  assert.deepEqual(addPerson(["A"], "   "), ["A"]);
+  assert.deepEqual(addPerson(["A", "B"], "C", 2), ["A", "B"]);
 });

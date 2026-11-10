@@ -134,7 +134,8 @@ const toTrip = (d: DocumentSnapshot): Trip => {
     status: (["planning", "live", "archived"].includes(v.status) ? v.status : "planning") as TripStatus,
     cyberRisk: str(v.cyberRisk), cyberRationale: str(v.cyberRationale), countryRisk: str(v.countryRisk), countryRationale: str(v.countryRationale),
     roles, memberUids: Array.isArray(v.memberUids) ? v.memberUids : [], pendingEmails: Array.isArray(v.pendingEmails) ? v.pendingEmails : [],
-    requestId: typeof v.requestId === "string" ? v.requestId : null, createdAtMs: ms(v.createdAt),
+    requestId: typeof v.requestId === "string" ? v.requestId : null, createdByName: str(v.createdByName), createdByEmail: str(v.createdByEmail),
+    createdAtMs: ms(v.createdAt),
   };
 };
 

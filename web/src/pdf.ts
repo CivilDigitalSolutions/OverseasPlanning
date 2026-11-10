@@ -1,6 +1,6 @@
 import type { jsPDF as JsPdf } from "jspdf";
 import {
-  ITEM_SCHEMAS, REQUEST_STATUS_LABEL, TRIP_ROLES, TRIP_STATUSES, dateRange, financeTotals, formatBytes, formatDate, formatMoney,
+  ITEM_SCHEMAS, REQUEST_STATUS_LABEL, displayValue, TRIP_ROLES, TRIP_STATUSES, dateRange, financeTotals, formatBytes, formatDate, formatMoney,
   kindLabel, type ItemSchema,
 } from "./model";
 import { saveFile } from "./download";
@@ -23,7 +23,6 @@ export async function exportTripPdf(tripId: string) {
 type AutoTable = (doc: JsPdf, opts: Record<string, unknown>) => void;
 const M = 40;
 const when = (ms: number) => (ms ? new Date(ms).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "");
-const cell = (v: unknown) => (Array.isArray(v) ? v.join("\n") : v === true ? "Yes" : v === false ? "No" : v === undefined || v === null ? "" : String(v).replace("T", " "));
 
 function buildPdf(pdf: JsPdf, autoTable: AutoTable, s: TripSnapshot) {
   const { trip } = s;
@@ -57,7 +56,7 @@ function buildPdf(pdf: JsPdf, autoTable: AutoTable, s: TripSnapshot) {
   pdf.setFontSize(8).text(`Exported ${when(Date.now())} — contains personal data; handle accordingly.`, M, y); y += 6;
 
   heading("Overview");
-  kv([["Team", trip.teamName], ["Location", trip.location], ["Dates", dateRange(trip.startDate, trip.endDate)],
+  kv([["Created by (HOST)", [trip.createdByName, trip.createdByEmail].filter(Boolean).join(" · ")], ["Team", trip.teamName], ["Location", trip.location], ["Dates", dateRange(trip.startDate, trip.endDate)],
     ["Cyber risk", trip.cyberRisk], ["Cyber rationale", trip.cyberRationale], ["Country risk", trip.countryRisk], ["Country rationale", trip.countryRationale]]);
 
   heading("Roles");
@@ -73,7 +72,7 @@ function buildPdf(pdf: JsPdf, autoTable: AutoTable, s: TripSnapshot) {
     const schema: ItemSchema = ITEM_SCHEMAS[key];
     heading(schema.plural);
     const cols = schema.fields.filter((f) => f.type !== "textarea");
-    table(cols.map((f) => f.label), s.items[key].map((it) => cols.map((f) => cell(it.values[f.key]))), { styles: { fontSize: 7.5, cellPadding: 3 } });
+    table(cols.map((f) => f.label), s.items[key].map((it) => cols.map((f) => displayValue(f, it.values))), { styles: { fontSize: 7.5, cellPadding: 3 } });
     for (const it of s.items[key]) if (it.values.notes) text(`${schema.title(it.values)} — notes`, String(it.values.notes));
   }
 

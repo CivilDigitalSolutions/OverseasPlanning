@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { Badge, Checkbox, Confirm, Empty, Icon, Loading, Modal, Notice, TextField, errorText } from "./components";
-import { cleanItem, type FieldSpec, type ItemSchema } from "./model";
-import { addItem, deleteItem, updateItem, useItems, type Item } from "./store";
+import { useId } from "react";
+import { Badge, Checkbox, Confirm, Empty, Icon, Loading, Modal, Notice, SelectField, TextField, errorText } from "./components";
+import { CURRENCIES, TRIP_ROLES, addPerson, cleanItem, displayValue, type FieldSpec, type ItemSchema } from "./model";
+import { addItem, deleteItem, updateItem, useItems, useMembers, type Item } from "./store";
 import type { TripCtx } from "./TripDetail";
 
 /** Flights, hotels, hire cars and assets share one list + form, driven by ITEM_SCHEMAS. */
@@ -27,12 +28,11 @@ export function ItemsTab({ ctx, schema }: { ctx: TripCtx; schema: ItemSchema }) 
                   <span className="muted small" style={{ display: "block" }}>{schema.subtitle(it.values)}</span>
                 </span>
                 {schema.collection === "assets" && it.values.returned === true && <Badge tone="ok">Returned</Badge>}
-                {Array.isArray(it.values.passengers) && <Badge>{(it.values.passengers as string[]).length} on board</Badge>}
               </button>
               {open === it.id && (
                 <div style={{ padding: "0 14px 14px" }} className="stack">
                   <dl className="kv">
-                    {schema.fields.map((f) => <FieldValue key={f.key} f={f} v={it.values[f.key]} />)}
+                    {schema.fields.map((f) => <FieldValue key={f.key} f={f} values={it.values} />)}
                   </dl>
                   <div className="row">
                     <button className="btn secondary small" onClick={() => setEditing(it)}><Icon name="edit" size={16} /> Edit</button>
@@ -54,29 +54,60 @@ export function ItemsTab({ ctx, schema }: { ctx: TripCtx; schema: ItemSchema }) 
   );
 }
 
-function FieldValue({ f, v }: { f: FieldSpec; v: unknown }) {
-  let shown: string;
-  if (f.type === "checkbox") shown = v === true ? "Yes" : "No";
-  else if (Array.isArray(v)) shown = v.length ? v.join("\n") : "";
-  else shown = v === undefined || v === null ? "" : String(v).replace("T", " ");
-  if (!shown) return null;
+function FieldValue({ f, values }: { f: FieldSpec; values: Record<string, unknown> }) {
+  const shown = displayValue(f, values);
+  if (!shown || (f.type === "checkbox" && values[f.key] === undefined)) return null;
   return <><dt>{f.label}</dt><dd style={{ whiteSpace: "pre-wrap" }}>{shown}</dd></>;
 }
 
-const PLACEHOLDER: Record<string, string> = {
-  airline: "e.g. British Airways", flightNumber: "e.g. BA117", from: "e.g. LHR", to: "e.g. JFK", bookingRef: "e.g. ABC123",
-  passengers: "One name per line", guests: "One name per line", drivers: "One name per line", notes: "Optional",
-  name: "Name", address: "Street, city, postcode", city: "City", phone: "+44…", company: "e.g. Hertz", vehicle: "e.g. Ford Focus",
-  registration: "e.g. AB12 CDE", pickUpLocation: "Address or airport", dropOffLocation: "Address or airport",
-  category: "e.g. Laptop", serialNumber: "e.g. SN-00123", quantity: "1", carriedBy: "Name",
-};
+/** Named persons: add one at a time (Enter or +), with quick-picks from the trip's people. */
+function PeopleField({ f, value, onChange, suggestions, error }: { f: FieldSpec; value: string[]; onChange: (v: string[]) => void; suggestions: string[]; error?: string }) {
+  const [name, setName] = useState("");
+  const id = useId();
+  const add = (n: string) => { onChange(addPerson(value, n, f.max)); setName(""); };
+  const picks = suggestions.filter((sg) => !value.some((v) => v.toLowerCase() === sg.toLowerCase()));
+  return (
+    <div className="field">
+      <label htmlFor={id}>{f.label} {value.length > 0 && <span className="muted small">({value.length})</span>}</label>
+      {value.length > 0 && (
+        <div className="row" style={{ gap: 6 }}>
+          {value.map((p) => (
+            <span key={p} className="chip">{p}
+              <button type="button" aria-label={`Remove ${p}`} onClick={() => onChange(value.filter((x) => x !== p))}><Icon name="close" size={14} /></button>
+            </span>
+          ))}
+        </div>
+      )}
+      <div className="row" style={{ flexWrap: "nowrap" }}>
+        <input id={id} type="text" placeholder="Add a name" value={name} maxLength={120}
+          onChange={(e) => setName(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); add(name); } }} />
+        <button type="button" className="btn secondary" aria-label="Add name" disabled={!name.trim()} onClick={() => add(name)}><Icon name="plus" /></button>
+      </div>
+      {picks.length > 0 && (
+        <div className="row" style={{ gap: 6 }}>
+          {picks.slice(0, 12).map((p) => <button key={p} type="button" className="chip pick" onClick={() => add(p)}><Icon name="plus" size={14} />{p}</button>)}
+        </div>
+      )}
+      {error && <span className="error" role="alert">{error}</span>}
+    </div>
+  );
+}
 
 function ItemForm({ ctx, schema, item, onClose }: { ctx: TripCtx; schema: ItemSchema; item: Item | null; onClose: () => void }) {
   const [raw, setRaw] = useState<Record<string, unknown>>(() => {
     const v = { ...(item?.values ?? {}) };
-    for (const f of schema.fields) if (f.type === "list" && Array.isArray(v[f.key])) v[f.key] = (v[f.key] as string[]).join("\n");
+    for (const f of schema.fields) {
+      if (f.type === "list" && Array.isArray(v[f.key])) v[f.key] = (v[f.key] as string[]).join("\n");
+      if (f.type === "people" && !Array.isArray(v[f.key])) v[f.key] = [];
+      if (f.type === "money" && typeof v[f.key] === "number") v[f.key] = (v[f.key] as number).toFixed(2);
+    }
     return v;
   });
+  const members = useMembers(ctx.trip.id);
+  const suggestions = [...new Set([
+    ...TRIP_ROLES.map((r) => ctx.trip.roles[r.key]?.name ?? ""),
+    ...(members ?? []).map((m) => m.name),
+  ].map((n) => n.trim()).filter(Boolean))];
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
@@ -88,7 +119,7 @@ function ItemForm({ ctx, schema, item, onClose }: { ctx: TripCtx; schema: ItemSc
     if (Object.keys(e).length) return;
     setBusy(true); setErr("");
     try {
-      if (item) await updateItem(ctx.trip.id, schema.collection, item.id, value, schema.fields.map((f) => f.key));
+      if (item) await updateItem(ctx.trip.id, schema.collection, item.id, value, schema.fields.flatMap((f) => (f.type === "money" ? [f.key, `${f.key}Currency`] : [f.key])));
       else await addItem(ctx.session, ctx.trip.id, schema.collection, value);
       onClose();
     } catch (e2) { setErr(errorText(e2)); setBusy(false); }
@@ -100,14 +131,23 @@ function ItemForm({ ctx, schema, item, onClose }: { ctx: TripCtx; schema: ItemSc
       <button className="btn" disabled={busy} onClick={save}>Save</button>
     </>}>
       <div className="stack">
-        {schema.fields.map((f) => f.type === "checkbox"
-          ? <Checkbox key={f.key} checked={raw[f.key] === true} onChange={(v) => setRaw({ ...raw, [f.key]: v })}>{f.label}</Checkbox>
-          : (
-            <TextField key={f.key} label={f.label + (f.required ? " *" : "")} value={str(f.key)} onChange={(v) => setRaw({ ...raw, [f.key]: v })}
+        {schema.fields.map((f) => {
+          const label = f.label + (f.required ? " *" : "");
+          if (f.type === "checkbox") return <Checkbox key={f.key} checked={raw[f.key] === true} onChange={(v) => setRaw({ ...raw, [f.key]: v })}>{f.label}</Checkbox>;
+          if (f.type === "people") return <PeopleField key={f.key} f={f} value={(raw[f.key] as string[]) ?? []} suggestions={suggestions} error={errors[f.key]} onChange={(v) => setRaw({ ...raw, [f.key]: v })} />;
+          if (f.type === "money") return (
+            <div key={f.key} className="grid2">
+              <TextField label={label} inputMode="decimal" placeholder="0.00" value={str(f.key)} onChange={(v) => setRaw({ ...raw, [f.key]: v })} error={errors[f.key]} />
+              <SelectField label="Currency" value={str(`${f.key}Currency`) || "GBP"} onChange={(v) => setRaw({ ...raw, [`${f.key}Currency`]: v })} options={CURRENCIES} />
+            </div>
+          );
+          return (
+            <TextField key={f.key} label={label} value={str(f.key)} onChange={(v) => setRaw({ ...raw, [f.key]: v })}
               type={f.type === "date" ? "date" : f.type === "datetime" ? "datetime-local" : f.type === "number" ? "number" : "text"}
               multiline={f.type === "textarea" || f.type === "list"} rows={f.type === "list" ? 4 : 3}
-              placeholder={PLACEHOLDER[f.key]} maxLength={f.type === "list" ? undefined : f.max} error={errors[f.key]} />
-          ))}
+              placeholder={f.placeholder} maxLength={f.type === "list" ? undefined : f.max} error={errors[f.key]} />
+          );
+        })}
         {err && <Notice tone="bad">{err}</Notice>}
       </div>
     </Modal>

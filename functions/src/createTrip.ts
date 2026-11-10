@@ -50,7 +50,9 @@ export const createTrip = onCall(async (req) => {
       teamName, location, startDate: r.get("startDate"), endDate: r.get("endDate"), status: "planning",
       cyberRisk: cyber.level, cyberRationale: cyber.rationale, countryRisk: country.level, countryRationale: country.rationale,
       roles: resolved, memberUids: [...members.keys()], pendingEmails: [...pending], requestId,
-      createdBy: uid, createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp(),
+      // Shown on the trip's Overview: the HOST member who created the record.
+      createdBy: uid, createdByName: hostName, createdByEmail: cleanText(req.auth?.token.email, 254),
+      createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp(),
     });
     for (const [mUid, m] of members) writeMember(tx, tripRef, mUid, m.name, m.email, { uid, name: hostName });
     tx.update(reqRef, { status: "accepted", tripId: tripRef.id, decidedBy: uid, decidedAt: FieldValue.serverTimestamp() });

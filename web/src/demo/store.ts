@@ -155,7 +155,8 @@ export async function createTrip(input: CreateTripInput) {
     name: input.name, teamName: req.data.teamName, location: req.data.location, startDate: req.data.startDate, endDate: req.data.endDate,
     status: "planning", cyberRisk: input.cyberRisk, cyberRationale: input.cyberRationale, countryRisk: input.countryRisk,
     countryRationale: input.countryRationale, roles, memberUids: [...members.keys()], pendingEmails: [...pending],
-    requestId: input.requestId, createdBy: be().uid, createdAt: now(), updatedAt: now(),
+    requestId: input.requestId, createdBy: be().uid, createdByName: me?.name ?? "", createdByEmail: me?.email ?? "",
+    createdAt: now(), updatedAt: now(),
   });
   for (const [uid, m] of members) await be().set(`trips/${tripId}/members/${uid}`, { ...m, addedByName: me?.name ?? "HOST", addedAt: now() });
   await be().patch(`tripRequests/${input.requestId}`, { status: "accepted", tripId, decidedAt: now() });
@@ -175,7 +176,8 @@ const toTrip = (s: Snap): Trip => {
     status: (["planning", "live", "archived"].includes(v.status as string) ? v.status : "planning") as TripStatus,
     cyberRisk: str(v.cyberRisk), cyberRationale: str(v.cyberRationale), countryRisk: str(v.countryRisk), countryRationale: str(v.countryRationale),
     roles, memberUids: Array.isArray(v.memberUids) ? v.memberUids as string[] : [], pendingEmails: Array.isArray(v.pendingEmails) ? v.pendingEmails as string[] : [],
-    requestId: typeof v.requestId === "string" ? v.requestId : null, createdAtMs: ms(v.createdAt),
+    requestId: typeof v.requestId === "string" ? v.requestId : null, createdByName: str(v.createdByName), createdByEmail: str(v.createdByEmail),
+    createdAtMs: ms(v.createdAt),
   };
 };
 

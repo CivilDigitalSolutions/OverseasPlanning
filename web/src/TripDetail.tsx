@@ -17,9 +17,11 @@ import { VaccinationsTab } from "./VaccinationsTab";
 export interface TripCtx {
   session: Session;
   trip: Trip;
-  /** HOST, or this trip's Team Leader: approves requests, moves status, reads all declarations. */
+  /** HOST, or this trip's Team Leader: moves status, reads all declarations, completes requests. */
   canLead: boolean;
   isTeamLeader: boolean;
+  /** Only the trip's SPC approves or rejects requests (owner decision 2026-11-10). */
+  isSpc: boolean;
 }
 
 const TABS = [
@@ -45,7 +47,8 @@ export function TripDetail({ session, tripId, tab }: { session: Session; tripId:
   if (trip === null) return <Empty>Trip not found, or you don't have access.</Empty>;
 
   const isTeamLeader = !!trip.roles.teamLeader?.uid && trip.roles.teamLeader.uid === session.uid;
-  const ctx: TripCtx = { session, trip, canLead: session.isHost || isTeamLeader, isTeamLeader };
+  const isSpc = !!trip.roles.spc?.uid && trip.roles.spc.uid === session.uid;
+  const ctx: TripCtx = { session, trip, canLead: session.isHost || isTeamLeader, isTeamLeader, isSpc };
   const active = TABS.some((t) => t.key === tab) ? tab : "overview";
   const open = tl ? openCount(tl) : 0;
   const hint = session.isHost || isTeamLeader ? statusHint(trip, todayIso()) : null;
@@ -116,7 +119,7 @@ function Overview({ ctx }: { ctx: TripCtx }) {
       </section>
       <section className="card stack">
         <h2>Trip</h2>
-        <dl className="kv"><dt>Team</dt><dd>{trip.teamName}</dd><dt>Location</dt><dd>{trip.location}</dd><dt>Dates</dt><dd>{dateRange(trip.startDate, trip.endDate)}</dd></dl>
+        <dl className="kv"><dt>Created by (HOST)</dt><dd>{trip.createdByName || "—"}{trip.createdByEmail ? <span className="muted small"> · {trip.createdByEmail}</span> : null}</dd><dt>Team</dt><dd>{trip.teamName}</dd><dt>Location</dt><dd>{trip.location}</dd><dt>Dates</dt><dd>{dateRange(trip.startDate, trip.endDate)}</dd></dl>
         {canLead && (
           <div className="row">
             {TRIP_STATUSES.filter((s) => s.key !== trip.status).map((s) => (

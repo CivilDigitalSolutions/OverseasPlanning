@@ -9,7 +9,7 @@ import type { TripCtx } from "./TripDetail";
 
 /**
  * Requests to the Team Leader, each with an approval process (spec §6):
- * pending → approved / rejected (Team Leader or HOST) → completed once fulfilled.
+ * pending → approved / rejected (the trip's SPC only) → completed once fulfilled (SPC, Team Leader or HOST).
  */
 const FILTERS: { key: TlRequestStatus | "all"; label: string }[] = [
   { key: "all", label: "All" }, { key: "pending", label: "Awaiting approval" }, { key: "approved", label: "Approved" },
@@ -76,11 +76,11 @@ export function RequestsTab({ ctx, requests }: { ctx: TripCtx; requests: TlReque
                   <div className="small" style={{ color: "var(--ok)" }}>Completed by {r.completedByName} · {relTime(r.completedAtMs)}{r.response ? ` — ${r.response}` : ""}</div>
                 )}
                 <div className="row">
-                  {ctx.canLead && r.status === "pending" && <>
+                  {ctx.isSpc && r.status === "pending" && <>
                     <button className="btn small" onClick={() => setDeciding({ r, approve: true })}>Approve</button>
                     <button className="btn danger small" onClick={() => setDeciding({ r, approve: false })}>Reject</button>
                   </>}
-                  {ctx.canLead && r.status === "approved" && <button className="btn small" onClick={() => setCompleting(r)}><Icon name="check" size={16} /> Mark completed</button>}
+                  {(ctx.canLead || ctx.isSpc) && r.status === "approved" && <button className="btn small" onClick={() => setCompleting(r)}><Icon name="check" size={16} /> Mark completed</button>}
                   {mine && r.status === "rejected" && <button className="btn secondary small" onClick={() => resubmitTlRequest(ctx.trip.id, r.id).catch((e) => setErr(errorText(e)))}>Resubmit</button>}
                   {((mine && r.status === "pending") || ctx.session.isHost) && <button className="btn ghost small" onClick={() => setRemoving(r)}>Delete</button>}
                 </div>

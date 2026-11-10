@@ -188,3 +188,8 @@ input[aria-invalid="true"], select[aria-invalid="true"], textarea[aria-invalid="
 table.simple { width: 100%; border-collapse: collapse; font-size: .9rem; }
 table.simple th, table.simple td { padding: 8px 6px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
 table.simple td.num, table.simple th.num { text-align: right; white-space: nowrap; }
+
+/* ---- chips (named persons) ---- */
+.chip { display: inline-flex; align-items: center; gap: 4px; padding: 4px 6px 4px 10px; border-radius: 999px; background: var(--primary-soft); color: var(--ink); font-size: .88rem; font-weight: 600; border: 1px solid transparent; }
+.chip button { border: 0; background: transparent; color: var(--ink-2); cursor: pointer; padding: 2px; line-height: 0; border-radius: 50%; }
+.chip.pick { background: #fff; border-color: #B9C3D3; color: var(--primary); padding: 4px 10px 4px 6px; cursor: pointer; font: inherit; font-size: .85rem; }

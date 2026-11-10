@@ -28,8 +28,10 @@ service cloud.firestore {
     function trip(tripId) { return get(/databases/$(database)/documents/trips/$(tripId)).data; }
     function onTrip(tripId) { return isHost() || (verified() && me() in trip(tripId).memberUids); }
     function leaderUidOf(t) { return t.get('roles', {}).get('teamLeader', {}).get('uid', null); }
-    /** HOST or this trip's Team Leader: approves requests, moves status, reads all declarations. */
+    /** HOST or this trip's Team Leader: moves status, reads all declarations, completes requests. */
     function isLead(tripId) { return isHost() || (verified() && leaderUidOf(trip(tripId)) == me()); }
+    /** ONLY the trip's SPC approves or rejects requests — not HOST, not the Team Leader (owner decision 2026-11-10). */
+    function isSpc(tripId) { return verified() && trip(tripId).get('roles', {}).get('spc', {}).get('uid', null) == me(); }
 
     // ---- users --------------------------------------------------------------------------------
     match /users/{uid} {
@@ -90,9 +92,9 @@ service cloud.firestore {
 
       // Flights, hotels, hire cars, assets — any member. Keys must match web/src/model.ts ITEM_SCHEMAS.
       function itemKeys(coll) {
-        return coll == 'flights' ? ['airline', 'flightNumber', 'from', 'to', 'departAt', 'arriveAt', 'bookingRef', 'passengers', 'notes']
-          : coll == 'hotels' ? ['name', 'address', 'city', 'phone', 'checkIn', 'checkOut', 'bookingRef', 'guests', 'notes']
-          : coll == 'cars' ? ['company', 'vehicle', 'registration', 'pickUpLocation', 'pickUpAt', 'dropOffLocation', 'dropOffAt', 'bookingRef', 'drivers', 'notes']
+        return coll == 'flights' ? ['airline', 'flightNumber', 'from', 'to', 'departAt', 'arriveAt', 'bookingRef', 'cost', 'costCurrency', 'passengers', 'notes']
+          : coll == 'hotels' ? ['name', 'address', 'city', 'phone', 'checkIn', 'checkOut', 'bookingRef', 'cost', 'costCurrency', 'guests', 'notes']
+          : coll == 'cars' ? ['company', 'vehicle', 'insuranceClass', 'registration', 'collectionLocation', 'collectionDate', 'dropOffLocation', 'dropOffDate', 'bookingRef', 'cost', 'costCurrency', 'drivers', 'notes']
           : ['name', 'category', 'serialNumber', 'quantity', 'carriedBy', 'returned', 'notes'];
       }
       function validItem(coll, m) {
@@ -102,7 +104,12 @@ service cloud.firestore {
           && optStr(m, 'flightNumber', 20) && optStr(m, 'airline', 80) && optStr(m, 'from', 80) && optStr(m, 'to', 80)
           && optStr(m, 'name', 120) && optStr(m, 'address', 400) && optStr(m, 'company', 80) && optStr(m, 'bookingRef', 40)
           && (!('quantity' in m) || (m.quantity is int && m.quantity >= 0 && m.quantity <= 100000))
-          && (!('returned' in m) || m.returned is bool);
+          && (!('returned' in m) || m.returned is bool)
+          && optStr(m, 'insuranceClass', 60) && optStr(m, 'collectionLocation', 160) && optStr(m, 'dropOffLocation', 160)
+          && optDate(m, 'collectionDate') && optDate(m, 'dropOffDate') && optDate(m, 'checkIn') && optDate(m, 'checkOut')
+          // A booking cost always carries its currency.
+          && (!('cost' in m) || (m.cost is number && m.cost >= 0 && m.cost <= 10000000 && reqStr(m, 'costCurrency', 10)))
+          && (!('costCurrency' in m) || 'cost' in m);
       }
       match /{coll}/{itemId} {
         allow read: if coll in ['flights', 'hotels', 'cars', 'assets'] && onTrip(tripId);
@@ -134,7 +141,7 @@ service cloud.firestore {
         allow delete: if onTrip(tripId) && (resource.data.uploadedBy == me() || isHost());
       }
 
-      // Requests to the Team Leader, with approval: pending → approved | rejected → completed.
+      // Requests to the Team Leader, with approval: pending → approved | rejected (SPC only) → completed.
       match /tlRequests/{id} {
         allow read: if onTrip(tripId);
         allow create: if onTrip(tripId)
@@ -145,12 +152,12 @@ service cloud.firestore {
           && (!('quantity' in d()) || (d().quantity is int && d().quantity >= 1 && d().quantity <= 1000))
           && (!('amount' in d()) || (d().amount is number && d().amount > 0 && d().amount <= 1000000 && reqStr(d(), 'currency', 10)));
         allow update: if
-          // Decide (Team Leader / HOST)
-          (isLead(tripId) && resource.data.status == 'pending' && d().status in ['approved', 'rejected']
+          // Decide: the trip's SPC only
+          (isSpc(tripId) && resource.data.status == 'pending' && d().status in ['approved', 'rejected']
             && changed().hasOnly(['status', 'decidedBy', 'decidedByName', 'decidedAt', 'decisionNote'])
             && d().decidedBy == me() && d().decidedAt == request.time && optStr(d(), 'decisionNote', 1000) && optStr(d(), 'decidedByName', 80))
-          // Complete an approved request (Team Leader / HOST)
-          || (isLead(tripId) && resource.data.status == 'approved' && d().status == 'completed'
+          // Complete an approved request (SPC, Team Leader or HOST)
+          || ((isSpc(tripId) || isLead(tripId)) && resource.data.status == 'approved' && d().status == 'completed'
             && changed().hasOnly(['status', 'completedBy', 'completedByName', 'completedAt', 'response'])
             && d().completedBy == me() && d().completedAt == request.time && optStr(d(), 'response', 1000) && optStr(d(), 'completedByName', 80))
           // The creator resubmits a rejected request (decision fields removed)

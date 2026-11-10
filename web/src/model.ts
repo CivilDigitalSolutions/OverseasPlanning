@@ -59,6 +59,9 @@ export interface Trip {
   memberUids: string[];
   pendingEmails: string[];
   requestId: string | null;
+  /** The HOST member who created the trip record. */
+  createdByName: string;
+  createdByEmail: string;
   createdAtMs: number;
 }
 
@@ -148,7 +151,11 @@ export const dateRange = (a: string, b: string) => `${formatDate(a)} – ${forma
 
 // ---- Planning items (flights, hotels, hire cars, assets) ------------------------------------------
 
-export type FieldType = "text" | "textarea" | "date" | "datetime" | "number" | "list" | "checkbox";
+/**
+ * `people`: named persons, stored as a string array, edited one name at a time.
+ * `money`: an amount stored at `key` plus its currency at `${key}Currency`.
+ */
+export type FieldType = "text" | "textarea" | "date" | "datetime" | "number" | "list" | "people" | "money" | "checkbox";
 export interface FieldSpec {
   key: string;
   label: string;
@@ -156,6 +163,10 @@ export interface FieldSpec {
   required?: boolean;
   max?: number;
   hint?: string;
+  /** Hint text shown inside the input. */
+  placeholder?: string;
+  /** For dates: must not be before this other field's date. */
+  notBefore?: string;
 }
 
 export interface ItemSchema {
@@ -171,58 +182,66 @@ export interface ItemSchema {
 const s = (v: unknown) => (typeof v === "string" ? v : typeof v === "number" ? String(v) : "");
 const when = (v: unknown) => (s(v) ? s(v).replace("T", " ") : "");
 
+const cost = (v: Record<string, unknown>) => (typeof v.cost === "number" ? formatMoney(v.cost, s(v.costCurrency) || "GBP") : "");
+const names = (v: unknown) => (Array.isArray(v) && v.length ? `${v.length} ${v.length === 1 ? "person" : "people"}` : "");
+
 /**
- * Field lists per planning tab. TODO(owner): confirm each list — these are a reasonable first cut,
- * not a requirement (spec §5). firestore.rules `itemKeys()` must list the same keys.
+ * Field lists per planning tab (owner decisions 2026-11-10: named persons and a booking cost on
+ * flights and hotels; hire cars carry company, collection/drop-off location and date, insurance
+ * class and cost). firestore.rules `itemKeys()` must list the same keys (money adds `<key>Currency`).
  */
 export const ITEM_SCHEMAS = {
   flights: {
     collection: "flights", singular: "flight", plural: "Flights",
     title: (v) => [s(v.airline), s(v.flightNumber)].filter(Boolean).join(" ") || "Flight",
-    subtitle: (v) => [`${s(v.from) || "?"} → ${s(v.to) || "?"}`, when(v.departAt)].filter(Boolean).join(" · "),
+    subtitle: (v) => [`${s(v.from) || "?"} → ${s(v.to) || "?"}`, when(v.departAt), names(v.passengers), cost(v)].filter(Boolean).join(" · "),
     fields: [
-      { key: "airline", label: "Airline", type: "text", max: 80 },
-      { key: "flightNumber", label: "Flight number", type: "text", required: true, max: 20 },
-      { key: "from", label: "From", type: "text", required: true, max: 80 },
-      { key: "to", label: "To", type: "text", required: true, max: 80 },
+      { key: "airline", label: "Airline", type: "text", max: 80, placeholder: "e.g. British Airways" },
+      { key: "flightNumber", label: "Flight number", type: "text", required: true, max: 20, placeholder: "e.g. BA117" },
+      { key: "from", label: "From", type: "text", required: true, max: 80, placeholder: "e.g. LHR" },
+      { key: "to", label: "To", type: "text", required: true, max: 80, placeholder: "e.g. JFK" },
       { key: "departAt", label: "Departs (local time)", type: "datetime" },
       { key: "arriveAt", label: "Arrives (local time)", type: "datetime" },
-      { key: "bookingRef", label: "Booking reference", type: "text", max: 40 },
-      { key: "passengers", label: "Resources on this flight", type: "list", max: 100, hint: "One person or resource per line." },
-      { key: "notes", label: "Notes", type: "textarea", max: 2000 },
+      { key: "bookingRef", label: "Booking reference", type: "text", max: 40, placeholder: "e.g. ABC123" },
+      { key: "cost", label: "Cost of booking", type: "money" },
+      { key: "passengers", label: "Named persons", type: "people", max: 100 },
+      { key: "notes", label: "Notes", type: "textarea", max: 2000, placeholder: "Optional" },
     ],
   },
   hotels: {
     collection: "hotels", singular: "hotel", plural: "Hotels",
     title: (v) => s(v.name) || "Hotel",
-    subtitle: (v) => [s(v.city), [s(v.checkIn), s(v.checkOut)].filter(Boolean).join(" → ")].filter(Boolean).join(" · "),
+    subtitle: (v) => [s(v.city), [s(v.checkIn), s(v.checkOut)].filter(Boolean).join(" → "), names(v.guests), cost(v)].filter(Boolean).join(" · "),
     fields: [
-      { key: "name", label: "Hotel name", type: "text", required: true, max: 120 },
-      { key: "address", label: "Address", type: "textarea", max: 400 },
-      { key: "city", label: "City", type: "text", max: 80 },
-      { key: "phone", label: "Phone", type: "text", max: 40 },
+      { key: "name", label: "Hotel name", type: "text", required: true, max: 120, placeholder: "Hotel name" },
+      { key: "address", label: "Address", type: "textarea", max: 400, placeholder: "Street, city, postcode" },
+      { key: "city", label: "City", type: "text", max: 80, placeholder: "City" },
+      { key: "phone", label: "Phone", type: "text", max: 40, placeholder: "+44…" },
       { key: "checkIn", label: "Check in", type: "date" },
-      { key: "checkOut", label: "Check out", type: "date" },
-      { key: "bookingRef", label: "Booking reference", type: "text", max: 40 },
-      { key: "guests", label: "Guests", type: "list", max: 100, hint: "One person per line." },
-      { key: "notes", label: "Notes", type: "textarea", max: 2000 },
+      { key: "checkOut", label: "Check out", type: "date", notBefore: "checkIn" },
+      { key: "bookingRef", label: "Booking reference", type: "text", max: 40, placeholder: "e.g. ABC123" },
+      { key: "cost", label: "Cost of booking", type: "money" },
+      { key: "guests", label: "Named persons", type: "people", max: 100 },
+      { key: "notes", label: "Notes", type: "textarea", max: 2000, placeholder: "Optional" },
     ],
   },
   cars: {
     collection: "cars", singular: "hire car", plural: "Hire cars",
     title: (v) => [s(v.company), s(v.vehicle)].filter(Boolean).join(" · ") || "Hire car",
-    subtitle: (v) => [when(v.pickUpAt), s(v.pickUpLocation)].filter(Boolean).join(" · "),
+    subtitle: (v) => [[s(v.collectionDate), s(v.dropOffDate)].filter(Boolean).join(" → "), s(v.collectionLocation), cost(v)].filter(Boolean).join(" · "),
     fields: [
-      { key: "company", label: "Hire company", type: "text", required: true, max: 80 },
-      { key: "vehicle", label: "Vehicle", type: "text", max: 80 },
-      { key: "registration", label: "Registration", type: "text", max: 20 },
-      { key: "pickUpLocation", label: "Pick-up location", type: "text", max: 160 },
-      { key: "pickUpAt", label: "Pick-up (local time)", type: "datetime" },
-      { key: "dropOffLocation", label: "Drop-off location", type: "text", max: 160 },
-      { key: "dropOffAt", label: "Drop-off (local time)", type: "datetime" },
-      { key: "bookingRef", label: "Booking reference", type: "text", max: 40 },
-      { key: "drivers", label: "Named drivers", type: "list", max: 20, hint: "One per line." },
-      { key: "notes", label: "Notes", type: "textarea", max: 2000 },
+      { key: "company", label: "Hire car company", type: "text", required: true, max: 80, placeholder: "e.g. Hertz" },
+      { key: "vehicle", label: "Vehicle", type: "text", max: 80, placeholder: "e.g. Ford Focus estate" },
+      { key: "insuranceClass", label: "Insurance class", type: "text", max: 60, placeholder: "e.g. Group C, fully comprehensive" },
+      { key: "registration", label: "Registration", type: "text", max: 20, placeholder: "e.g. AB12 CDE" },
+      { key: "collectionLocation", label: "Collection location", type: "text", max: 160, placeholder: "Address or airport" },
+      { key: "collectionDate", label: "Collection date", type: "date" },
+      { key: "dropOffLocation", label: "Drop-off location", type: "text", max: 160, placeholder: "Address or airport" },
+      { key: "dropOffDate", label: "Drop-off date", type: "date", notBefore: "collectionDate" },
+      { key: "bookingRef", label: "Booking reference", type: "text", max: 40, placeholder: "e.g. ABC123" },
+      { key: "cost", label: "Cost of booking", type: "money" },
+      { key: "drivers", label: "Named drivers", type: "people", max: 20 },
+      { key: "notes", label: "Notes", type: "textarea", max: 2000, placeholder: "Optional" },
     ],
   },
   assets: {
@@ -231,13 +250,13 @@ export const ITEM_SCHEMAS = {
     subtitle: (v) => [s(v.category), s(v.serialNumber) && `S/N ${s(v.serialNumber)}`, s(v.carriedBy) && `with ${s(v.carriedBy)}`]
       .filter(Boolean).join(" · "),
     fields: [
-      { key: "name", label: "Asset", type: "text", required: true, max: 120 },
-      { key: "category", label: "Category", type: "text", max: 60, hint: "For example laptop, phone, radio, kit." },
-      { key: "serialNumber", label: "Serial / asset number", type: "text", max: 60 },
-      { key: "quantity", label: "Quantity", type: "number" },
-      { key: "carriedBy", label: "Carried by", type: "text", max: 80 },
+      { key: "name", label: "Asset", type: "text", required: true, max: 120, placeholder: "e.g. Laptop" },
+      { key: "category", label: "Category", type: "text", max: 60, placeholder: "e.g. IT, comms, kit" },
+      { key: "serialNumber", label: "Serial / asset number", type: "text", max: 60, placeholder: "e.g. SN-00123" },
+      { key: "quantity", label: "Quantity", type: "number", placeholder: "1" },
+      { key: "carriedBy", label: "Carried by", type: "text", max: 80, placeholder: "Name" },
       { key: "returned", label: "Returned after the trip", type: "checkbox" },
-      { key: "notes", label: "Notes", type: "textarea", max: 2000 },
+      { key: "notes", label: "Notes", type: "textarea", max: 2000, placeholder: "Optional" },
     ],
   },
 } satisfies Record<string, ItemSchema>;
@@ -256,7 +275,16 @@ export function cleanItem(schema: ItemSchema, raw: Record<string, unknown>): { v
       if (n < 0 || n > 100000 || !Number.isInteger(n)) { errors[f.key] = "Enter a whole number."; continue; }
       value[f.key] = n; continue;
     }
-    if (f.type === "list") {
+    if (f.type === "money") {
+      const raw0 = s(v).trim();
+      if (!raw0) { if (f.required) errors[f.key] = `Enter ${f.label.toLowerCase()}.`; continue; }
+      const amount = parseAmount(raw0);
+      if (amount === null) { errors[f.key] = "Enter an amount, e.g. 245.00."; continue; }
+      value[f.key] = amount;
+      value[`${f.key}Currency`] = s(raw[`${f.key}Currency`]).trim() || "GBP";
+      continue;
+    }
+    if (f.type === "list" || f.type === "people") {
       const lines = (Array.isArray(v) ? v.map(s) : s(v).split("\n")).map((x) => x.trim()).filter(Boolean);
       if (lines.length > (f.max ?? 100)) errors[f.key] = `At most ${f.max} lines.`;
       if (lines.some((l) => l.length > 120)) errors[f.key] = "Keep each line under 120 characters.";
@@ -267,7 +295,28 @@ export function cleanItem(schema: ItemSchema, raw: Record<string, unknown>): { v
     if (f.max && str.length > f.max) { errors[f.key] = `Keep this under ${f.max} characters.`; continue; }
     value[f.key] = str;
   }
+  for (const f of schema.fields) {
+    if (f.notBefore && typeof value[f.key] === "string" && typeof value[f.notBefore] === "string" && (value[f.key] as string) < (value[f.notBefore] as string)) {
+      errors[f.key] = "This is before the earlier date.";
+    }
+  }
   return { value, errors };
+}
+
+/** One field's stored value as display text (lists one per line; money with its currency). */
+export function displayValue(f: FieldSpec, values: Record<string, unknown>): string {
+  const v = values[f.key];
+  if (f.type === "checkbox") return v === true ? "Yes" : "No";
+  if (f.type === "money") return typeof v === "number" ? formatMoney(v, s(values[`${f.key}Currency`]) || "GBP") : "";
+  if (Array.isArray(v)) return v.join("\n");
+  return v === undefined || v === null ? "" : String(v).replace("T", " ");
+}
+
+/** Add a name to a people list: trimmed, ≤ 120 chars, no case-insensitive duplicate. */
+export function addPerson(list: string[], name: string, max = 100): string[] {
+  const n = name.trim().replace(/\s+/g, " ").slice(0, 120);
+  if (!n || list.length >= max || list.some((x) => x.toLowerCase() === n.toLowerCase())) return list;
+  return [...list, n];
 }
 
 // ---- Requests to the Team Leader (with approval) -------------------------------------------------
@@ -285,7 +334,8 @@ export type RequestKind = (typeof REQUEST_KINDS)[number]["key"];
 export const kindLabel = (k: string) => REQUEST_KINDS.find((x) => x.key === k)?.label ?? "Request";
 
 /**
- * pending → approved | rejected (Team Leader or HOST decides) → approved → completed (fulfilled).
+ * pending → approved | rejected (ONLY the trip's SPC decides — owner decision 2026-11-10)
+ * → completed once fulfilled (SPC, Team Leader or HOST).
  * A rejected request can be resubmitted by its creator (back to pending).
  */
 export type TlRequestStatus = "pending" | "approved" | "rejected" | "completed";
