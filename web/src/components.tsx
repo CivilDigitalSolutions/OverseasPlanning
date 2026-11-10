@@ -167,6 +167,7 @@ const PATHS: Record<string, string> = {
   logout: "M10 5H5v14h5M14 8l4 4-4 4M18 12H9",
   key: "M15 8a4 4 0 11-3.9 4.8L4 13v3h3v2h3l1.3-1.3A4 4 0 0115 8z",
   pdf: "M6 3h8l4 4v14H6zM9 13h6M9 17h4",
+  book: "M4 4.5A1.5 1.5 0 015.5 3H20v15H5.5A1.5 1.5 0 004 19.5v-15zM4 19.5A1.5 1.5 0 005.5 21H20M8 7h8M8 10.5h6",
 };
 export function Icon({ name, size = 20 }: { name: string; size?: number }) {
   return (

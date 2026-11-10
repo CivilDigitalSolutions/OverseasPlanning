@@ -1,6 +1,6 @@
 import type { jsPDF as JsPdf } from "jspdf";
 import {
-  ITEM_SCHEMAS, REQUEST_STATUS_LABEL, displayValue, TRIP_ROLES, TRIP_STATUSES, dateRange, financeTotals, formatBytes, formatDate, formatMoney,
+  FLIGHT_DECISION_LABEL, ITEM_SCHEMAS, REQUEST_STATUS_LABEL, displayValue, TRIP_ROLES, TRIP_STATUSES, dateRange, financeTotals, formatBytes, formatDate, formatMoney,
   kindLabel, type ItemSchema,
 } from "./model";
 import { saveFile } from "./download";
@@ -72,7 +72,9 @@ function buildPdf(pdf: JsPdf, autoTable: AutoTable, s: TripSnapshot) {
   ]);
 
   heading("Requests");
-  table(["Type", "Request", "Details", "Status", "Decision", "Completed"], s.tlRequests.map((r) => [
+  text("Team Leader summary", s.summaries.teamLeader?.text ?? "");
+  text("SPC summary", s.summaries.spc?.text ?? "");
+  table(["Type", "Request", "Rationale", "Status", "Decision", "Completed"], s.tlRequests.map((r) => [
     kindLabel(r.kind),
     `${r.title}\n${r.createdByName} · ${when(r.createdAtMs)}`,
     [r.details, r.quantity !== null ? `Qty ${r.quantity}` : "", r.amount !== null ? formatMoney(r.amount, r.currency) : "", r.neededBy ? `By ${formatDate(r.neededBy)}` : ""].filter(Boolean).join("\n"),
@@ -81,17 +83,32 @@ function buildPdf(pdf: JsPdf, autoTable: AutoTable, s: TripSnapshot) {
     r.completedByName ? `${r.completedByName} · ${when(r.completedAtMs)}${r.response ? `\n${r.response}` : ""}` : "",
   ]));
 
+  // One block per booking (flights now carry too many fields for a single table row).
   for (const key of ["flights", "hotels", "cars", "assets"] as const) {
     const schema: ItemSchema = ITEM_SCHEMAS[key];
     heading(schema.plural);
-    const cols = schema.fields.filter((f) => f.type !== "textarea");
-    table(cols.map((f) => f.label), s.items[key].map((it) => cols.map((f) => displayValue(f, it.values))), { styles: { fontSize: 7.5, cellPadding: 3 } });
-    for (const it of s.items[key]) if (it.values.notes) text(`${schema.title(it.values)} — notes`, String(it.values.notes));
+    if (s.items[key].length === 0) table([""], []);
+    for (const it of s.items[key]) {
+      space(30);
+      pdf.setFont("helvetica", "bold").setFontSize(10).setTextColor(40).text(schema.title(it.values), M, y + 12); y += 14;
+      const rows: [string, string][] = schema.fields.map((f) => [f.label, displayValue(f, it.values)] as [string, string]).filter(([, v]) => v !== "");
+      if (key === "flights") {
+        const d = it.values.spcDecision as "approved" | "not_approved" | undefined;
+        rows.push(["SPC decision", d ? `${FLIGHT_DECISION_LABEL[d]} — ${String(it.values.spcDecidedByName ?? "")}` : "Awaiting SPC"]);
+        if (d) rows.push(["SPC rationale", String(it.values.spcRationale ?? "")]);
+      }
+      kv(rows);
+    }
   }
 
   heading("Vaccination declarations");
   table(["Traveller", "Vaccinations", "Notes", "Declared"], s.vaccinations.map((v) => [
     v.name, v.vaccines.map((x) => `${x.name}${x.date ? ` (${formatDate(x.date)})` : ""}`).join("\n"), v.notes, v.declared ? when(v.declaredAtMs) : "Not declared",
+  ]));
+
+  heading("Contacts");
+  table(["Name", "Role on trip", "Organisation / title", "Email", "Phone", "Country"], s.contacts.map((c) => [
+    c.name, c.tripRole, [c.organisation, c.jobTitle].filter(Boolean).join("\n"), c.email, c.phone, c.country,
   ]));
 
   heading("Attachments");

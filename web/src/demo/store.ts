@@ -6,7 +6,7 @@
 import { useEffect, useState } from "react";
 import {
   EMPTY_DEBRIEF, MAX_ATTACHMENT_BYTES, PRIVACY_VERSION, REQUEST_KINDS, TERMS_VERSION,
-  type ChatMessage, type Debrief, type FinanceEntry, type RequestInput, type RequestKind, type RoleHolder, type TlRequest,
+  type ChatMessage, type Contact, type ContactInput, type TripContact, type Debrief, type FinanceEntry, type RequestInput, type RequestKind, type RoleHolder, type TlRequest,
   type TlRequestStatus, type Trip, type TripRequest, type TripRoleKey, type TripStatus, type VaccinationDeclaration, type VaccineRecord,
 } from "../model";
 import { DELETE, be, type QuerySpec, type Snap } from "./backend";
@@ -254,6 +254,12 @@ export const updateItem = (tripId: string, coll: string, id: string, values: Rec
   be().patch(`trips/${tripId}/${coll}/${id}`, { ...Object.fromEntries(keys.map((k) => [k, k in values ? values[k] : DELETE])), updatedAt: now() });
 export const deleteItem = (tripId: string, coll: string, id: string) => be().del(`trips/${tripId}/${coll}/${id}`);
 
+
+export const decideFlight = (s: Session, tripId: string, id: string, decision: "approved" | "not_approved", rationale: string) =>
+  be().patch(`trips/${tripId}/flights/${id}`, {
+    spcDecision: decision, spcRationale: rationale.trim().slice(0, 2000), spcDecidedBy: s.uid, spcDecidedByName: s.name.slice(0, 80), spcDecidedAt: now(), updatedAt: now(),
+  });
+
 // ---- Messages ---------------------------------------------------------------------------------
 
 const toMsg = (s: Snap): ChatMessage => ({
@@ -348,6 +354,20 @@ export const resubmitTlRequest = (tripId: string, id: string) =>
   be().patch(`trips/${tripId}/tlRequests/${id}`, { status: "pending", decidedBy: DELETE, decidedByName: DELETE, decidedAt: DELETE, decisionNote: DELETE });
 export const deleteTlRequest = (tripId: string, id: string) => be().del(`trips/${tripId}/tlRequests/${id}`);
 
+
+// ---- Request summaries (Team Leader / SPC) --------------------------------------------------------
+
+export type SummaryRole = "teamLeader" | "spc";
+export interface Summary { text: string; byName: string; updatedAtMs: number }
+export function useSummaries(tripId: string): Record<SummaryRole, Summary | null> | null {
+  const list = useColl(`trips/${tripId}/summaries`, {}, (s) => [s.id, { text: str(s.data.text), byName: str(s.data.byName), updatedAtMs: ms(s.data.updatedAt) }] as const, tripId);
+  if (!list) return null;
+  const m = Object.fromEntries(list) as Record<string, Summary>;
+  return { teamLeader: m.teamLeader ?? null, spc: m.spc ?? null };
+}
+export const saveSummary = (s: Session, tripId: string, role: SummaryRole, text: string) =>
+  be().set(`trips/${tripId}/summaries/${role}`, { text: text.trim().slice(0, 5000), byUid: s.uid, byName: s.name.slice(0, 80), updatedAt: now() });
+
 // ---- Vaccinations -----------------------------------------------------------------------------
 
 const toVacc = (s: Snap): VaccinationDeclaration => ({
@@ -393,6 +413,33 @@ export function useFinanceNotes(tripId: string): Record<string, { name: string; 
 export const saveFinanceNote = (s: Session, tripId: string, text: string) =>
   be().set(`trips/${tripId}/financeNotes/${s.uid}`, { name: s.name.slice(0, 80), text: text.trim(), updatedAt: now() });
 
+
+// ---- Contacts book ------------------------------------------------------------------------------
+
+const toContact = (s: Snap): Contact => ({
+  id: s.id, name: str(s.data.name), organisation: str(s.data.organisation), jobTitle: str(s.data.jobTitle), email: str(s.data.email), phone: str(s.data.phone),
+  country: str(s.data.country), notes: str(s.data.notes), createdBy: str(s.data.createdBy), createdByName: str(s.data.createdByName), updatedAtMs: ms(s.data.updatedAt),
+});
+export const useContacts = () => useColl("contacts", {}, toContact);
+export async function saveContact(s: Session, id: string | null, c: ContactInput): Promise<string> {
+  if (id) { await be().patch(`contacts/${id}`, { ...c, updatedAt: now() }); return id; }
+  const nid = be().newId();
+  await be().set(`contacts/${nid}`, { ...c, createdBy: s.uid, createdByName: s.name.slice(0, 80), createdAt: now(), updatedAt: now() });
+  return nid;
+}
+export const deleteContact = (id: string) => be().del(`contacts/${id}`);
+const toTripContact = (s: Snap): TripContact => ({
+  id: s.id, name: str(s.data.name), organisation: str(s.data.organisation), jobTitle: str(s.data.jobTitle), email: str(s.data.email), phone: str(s.data.phone),
+  country: str(s.data.country), tripRole: str(s.data.tripRole), addedByName: str(s.data.addedByName), addedAtMs: ms(s.data.addedAt),
+});
+export const useTripContacts = (tripId: string) => useColl(`trips/${tripId}/contacts`, {}, toTripContact, tripId);
+export const addContactToTrip = (s: Session, tripId: string, c: Contact, tripRole: string) =>
+  be().set(`trips/${tripId}/contacts/${c.id}`, {
+    name: c.name, organisation: c.organisation, jobTitle: c.jobTitle, email: c.email, phone: c.phone, country: c.country,
+    tripRole: tripRole.trim().slice(0, 80), addedBy: s.uid, addedByName: s.name.slice(0, 80), addedAt: now(),
+  });
+export const removeTripContact = (tripId: string, id: string) => be().del(`trips/${tripId}/contacts/${id}`);
+
 // ---- HOST administration ------------------------------------------------------------------------
 
 export async function setHostRole(email: string, host: boolean) {
@@ -406,7 +453,7 @@ export async function setHostRole(email: string, host: boolean) {
 
 export interface TripSnapshot {
   trip: Trip; members: MemberProfile[]; items: Record<string, Item[]>; messages: ChatMessage[]; attachments: Attachment[];
-  tlRequests: TlRequest[]; vaccinations: VaccinationDeclaration[]; debrief: Debrief; finance: FinanceEntry[];
+  tlRequests: TlRequest[]; summaries: Record<"teamLeader" | "spc", { text: string; byName: string } | null>; contacts: TripContact[]; vaccinations: VaccinationDeclaration[]; debrief: Debrief; finance: FinanceEntry[];
   financeNotes: Record<string, { name: string; text: string }>;
 }
 
@@ -425,7 +472,11 @@ export async function loadTripSnapshot(tripId: string): Promise<TripSnapshot> {
     trip, members: members.map(toMember),
     items: { flights: flights.map(toItem), hotels: hotels.map(toItem), cars: cars.map(toItem), assets: assets.map(toItem) },
     messages: messages.map(toMsg).sort((a, b) => a.createdAtMs - b.createdAtMs),
-    attachments: attachments.map(toAtt), tlRequests: tl.map(toTl),
+    attachments: attachments.map(toAtt), tlRequests: tl.map(toTl), contacts: (await sub("contacts")).map(toTripContact),
+    summaries: await sub("summaries").then((x) => {
+      const m = Object.fromEntries(x.map((d) => [d.id, { text: str(d.data.text), byName: str(d.data.byName) }]));
+      return { teamLeader: m.teamLeader ?? null, spc: m.spc ?? null };
+    }),
     vaccinations: vacc.map(toVacc).filter((v) => lead || v.uid === be().uid),
     debrief: toDebrief(debrief), finance: fin.map(toFin),
     financeNotes: Object.fromEntries(notes.map((n) => [n.id, { name: str(n.data.name), text: str(n.data.text) }])),

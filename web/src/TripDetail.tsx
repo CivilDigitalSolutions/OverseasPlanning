@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { AccessTab } from "./AccessTab";
 import { AttachmentsTab } from "./AttachmentsTab";
+import { ContactsTab } from "./ContactsTab";
 import { Badge, Checkbox, Empty, Icon, Loading, Modal, Notice, SelectField, TextField, errorText, navigate } from "./components";
 import { DebriefTab } from "./DebriefTab";
 import { ItemsTab } from "./ItemsTab";
@@ -34,6 +35,7 @@ const TABS = [
   { key: "messages", label: "Messages" },
   { key: "attachments", label: "Attachments" },
   { key: "vaccinations", label: "Vaccinations" },
+  { key: "contacts", label: "Contacts" },
   { key: "access", label: "Access" },
   { key: "debrief", label: "Debrief" },
 ] as const;
@@ -61,6 +63,7 @@ export function TripDetail({ session, tripId, tab }: { session: Session; tripId:
     case "attachments": body = <AttachmentsTab ctx={ctx} />; break;
     case "vaccinations": body = <VaccinationsTab ctx={ctx} />; break;
     case "access": body = <AccessTab ctx={ctx} />; break;
+    case "contacts": body = <ContactsTab ctx={ctx} />; break;
     case "debrief": body = <DebriefTab ctx={ctx} />; break;
     default: body = <Overview ctx={ctx} />;
   }

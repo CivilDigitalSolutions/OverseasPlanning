@@ -163,7 +163,13 @@ export const dateRange = (a: string, b: string) => `${formatDate(a)} – ${forma
  * `people`: named persons, stored as a string array, edited one name at a time.
  * `money`: an amount stored at `key` plus its currency at `${key}Currency`.
  */
-export type FieldType = "text" | "textarea" | "date" | "datetime" | "number" | "list" | "people" | "money" | "checkbox";
+export type FieldType = "text" | "textarea" | "date" | "datetime" | "number" | "list" | "people" | "money" | "checkbox"
+  /** One of `options` ("" = not set). */
+  | "select"
+  /** Named persons each with a travel class: [{ name, travelClass }]. */
+  | "passengers"
+  /** Stored as whole minutes; typed as "7h 30m", "7:30" or "450". */
+  | "duration";
 export interface FieldSpec {
   key: string;
   label: string;
@@ -175,6 +181,8 @@ export interface FieldSpec {
   placeholder?: string;
   /** For dates: must not be before this other field's date. */
   notBefore?: string;
+  /** For `select`. */
+  options?: readonly string[];
 }
 
 export interface ItemSchema {
@@ -190,6 +198,56 @@ export interface ItemSchema {
 const s = (v: unknown) => (typeof v === "string" ? v : typeof v === "number" ? String(v) : "");
 const when = (v: unknown) => (s(v) ? s(v).replace("T", " ") : "");
 
+// ---- Flights (owner decisions 2026-11-10) -------------------------------------------------------
+
+export const FLIGHT_STATUSES = ["Planning", "Requested", "Confirmed"] as const;
+export const FLIGHT_TYPES = ["Outbound", "Inbound", "Onward", "Connecting"] as const;
+/** TODO(owner): Economy is not in the list given — confirm whether it should be. */
+export const TRAVEL_CLASSES = ["First class", "Business class", "Premium economy", "Charter flight", "Other"] as const;
+export const DAY_NIGHT = ["Day", "Night"] as const;
+export const YES_NO = ["Yes", "No"] as const;
+
+export interface Passenger { name: string; travelClass: string }
+
+/**
+ * Day or night flight from the local departure/arrival times: Night when it departs 19:00–05:59 or
+ * lands on a later date than it left (overnight); otherwise Day. "" without a departure time.
+ * TODO(owner): confirm the definition (some policies use the length of the flight instead).
+ */
+export function dayNightFor(departAt: string, arriveAt: string): "" | "Day" | "Night" {
+  const m = /^(\d{4}-\d{2}-\d{2})T(\d{2}):\d{2}/.exec(departAt);
+  if (!m) return "";
+  const hour = Number(m[2]);
+  if (hour >= 19 || hour < 6) return "Night";
+  const a = /^(\d{4}-\d{2}-\d{2})T/.exec(arriveAt);
+  if (a && a[1] > m[1]) return "Night";
+  return "Day";
+}
+
+/** "7h 30m", "7h", "45m", "7:30" or plain minutes → whole minutes (1 min – 48 h); null if unreadable. */
+export function parseDuration(raw: string): number | null {
+  const t = raw.trim().toLowerCase();
+  if (!t) return null;
+  let mins: number | null = null;
+  let m: RegExpExecArray | null;
+  if ((m = /^(\d{1,2}):([0-5]\d)$/.exec(t))) mins = Number(m[1]) * 60 + Number(m[2]);
+  else if ((m = /^(?:(\d{1,2})\s*h(?:rs?|ours?)?)?\s*(?:(\d{1,3})\s*m(?:ins?|inutes?)?)?$/.exec(t)) && (m[1] || m[2])) mins = Number(m[1] ?? 0) * 60 + Number(m[2] ?? 0);
+  else if (/^\d{1,4}$/.test(t)) mins = Number(t);
+  return mins !== null && mins >= 1 && mins <= 48 * 60 ? mins : null;
+}
+export const formatDuration = (mins: number) => `${Math.floor(mins / 60)}h ${String(mins % 60).padStart(2, "0")}m`;
+
+/** People grouped by travel class, in TRAVEL_CLASSES order. */
+export function byClass(ps: Passenger[]): { travelClass: string; names: string[] }[] {
+  const order = [...TRAVEL_CLASSES, ...new Set(ps.map((p) => p.travelClass).filter((c) => !(TRAVEL_CLASSES as readonly string[]).includes(c)))];
+  return order.map((c) => ({ travelClass: c, names: ps.filter((p) => p.travelClass === c).map((p) => p.name) })).filter((g) => g.names.length > 0);
+}
+
+/** SPC decision on a flight (spc* fields, written only by the trip's SPC). */
+export type FlightDecision = "approved" | "not_approved";
+export const FLIGHT_DECISION_LABEL: Record<FlightDecision, string> = { approved: "SPC approved", not_approved: "SPC not approved" };
+export const SPC_FLIGHT_KEYS = ["spcDecision", "spcRationale", "spcDecidedBy", "spcDecidedByName", "spcDecidedAt"] as const;
+
 const cost = (v: Record<string, unknown>) => (typeof v.cost === "number" ? formatMoney(v.cost, s(v.costCurrency) || "GBP") : "");
 const names = (v: unknown) => (Array.isArray(v) && v.length ? `${v.length} ${v.length === 1 ? "person" : "people"}` : "");
 
@@ -201,18 +259,24 @@ const names = (v: unknown) => (Array.isArray(v) && v.length ? `${v.length} ${v.l
 export const ITEM_SCHEMAS = {
   flights: {
     collection: "flights", singular: "flight", plural: "Flights",
-    title: (v) => [s(v.airline), s(v.flightNumber)].filter(Boolean).join(" ") || "Flight",
-    subtitle: (v) => [`${s(v.from) || "?"} → ${s(v.to) || "?"}`, when(v.departAt), names(v.passengers), cost(v)].filter(Boolean).join(" · "),
+    title: (v) => [s(v.flightType), [s(v.airline), s(v.flightNumber)].filter(Boolean).join(" ")].filter(Boolean).join(" · ") || "Flight",
+    subtitle: (v) => [`${s(v.from) || "?"} → ${s(v.to) || "?"}`, when(v.departAt), s(v.dayNight), names(v.passengers), cost(v)].filter(Boolean).join(" · "),
     fields: [
+      { key: "flightStatus", label: "Flight status", type: "select", options: FLIGHT_STATUSES, required: true },
+      { key: "flightType", label: "Flight type", type: "select", options: FLIGHT_TYPES, required: true },
       { key: "airline", label: "Airline", type: "text", max: 80, placeholder: "e.g. British Airways" },
       { key: "flightNumber", label: "Flight number", type: "text", required: true, max: 20, placeholder: "e.g. BA117" },
-      { key: "from", label: "From", type: "text", required: true, max: 80, placeholder: "e.g. LHR" },
-      { key: "to", label: "To", type: "text", required: true, max: 80, placeholder: "e.g. JFK" },
-      { key: "departAt", label: "Departs (local time)", type: "datetime" },
-      { key: "arriveAt", label: "Arrives (local time)", type: "datetime" },
+      { key: "from", label: "Departure airport", type: "text", required: true, max: 80, placeholder: "e.g. London Heathrow (LHR)" },
+      { key: "departAt", label: "Departure date & local time", type: "datetime" },
+      { key: "to", label: "Arrival airport", type: "text", required: true, max: 80, placeholder: "e.g. New York JFK (JFK)" },
+      { key: "arriveAt", label: "Arrival date & local time", type: "datetime", notBefore: "departAt" },
+      { key: "dayNight", label: "Day or night flight", type: "select", options: DAY_NIGHT },
+      { key: "durationMinutes", label: "Flight duration", type: "duration", placeholder: "e.g. 7h 30m" },
       { key: "bookingRef", label: "Booking reference", type: "text", max: 40, placeholder: "e.g. ABC123" },
-      { key: "cost", label: "Cost of booking", type: "money" },
-      { key: "passengers", label: "Named persons", type: "people", max: 100 },
+      { key: "cost", label: "Flight cost", type: "money" },
+      { key: "corporateTravel", label: "Booked with corporate travel services?", type: "select", options: YES_NO, required: true },
+      { key: "valueForMoney", label: "Have you considered booking options to achieve best value for money?", type: "select", options: YES_NO, required: true },
+      { key: "passengers", label: "People booked", type: "passengers", max: 100 },
       { key: "notes", label: "Notes", type: "textarea", max: 2000, placeholder: "Optional" },
     ],
   },
@@ -292,6 +356,26 @@ export function cleanItem(schema: ItemSchema, raw: Record<string, unknown>): { v
       value[`${f.key}Currency`] = s(raw[`${f.key}Currency`]).trim() || "GBP";
       continue;
     }
+    if (f.type === "select") {
+      const v0 = s(v).trim();
+      if (!v0) { if (f.required) errors[f.key] = `Choose ${f.label.toLowerCase().replace(/\?$/, "")}.`; continue; }
+      if (!(f.options ?? []).includes(v0)) { errors[f.key] = "Choose an option from the list."; continue; }
+      value[f.key] = v0; continue;
+    }
+    if (f.type === "duration") {
+      const v0 = s(v).trim();
+      if (!v0) { if (f.required) errors[f.key] = `Enter ${f.label.toLowerCase()}.`; continue; }
+      const mins = typeof v === "number" ? v : parseDuration(v0);
+      if (mins === null) { errors[f.key] = "Enter a duration like 7h 30m."; continue; }
+      value[f.key] = mins; continue;
+    }
+    if (f.type === "passengers") {
+      const list = (Array.isArray(v) ? v : []) as Passenger[];
+      const clean = list.map((p) => ({ name: s(p?.name).trim().replace(/\s+/g, " ").slice(0, 120), travelClass: s(p?.travelClass) })).filter((p) => p.name);
+      if (clean.length > (f.max ?? 100)) errors[f.key] = `At most ${f.max} people.`;
+      else if (clean.some((p) => !(TRAVEL_CLASSES as readonly string[]).includes(p.travelClass))) errors[f.key] = "Choose a class for each person.";
+      value[f.key] = clean; continue;
+    }
     if (f.type === "list" || f.type === "people") {
       const lines = (Array.isArray(v) ? v.map(s) : s(v).split("\n")).map((x) => x.trim()).filter(Boolean);
       if (lines.length > (f.max ?? 100)) errors[f.key] = `At most ${f.max} lines.`;
@@ -316,8 +400,12 @@ export function displayValue(f: FieldSpec, values: Record<string, unknown>): str
   const v = values[f.key];
   if (f.type === "checkbox") return v === true ? "Yes" : "No";
   if (f.type === "money") return typeof v === "number" ? formatMoney(v, s(values[`${f.key}Currency`]) || "GBP") : "";
+  if (f.type === "duration") return typeof v === "number" ? formatDuration(v) : "";
+  if (f.type === "passengers") return Array.isArray(v) ? byClass(v as Passenger[]).map((g) => `${g.travelClass}: ${g.names.join(", ")}`).join("\n") : "";
   if (Array.isArray(v)) return v.join("\n");
-  return v === undefined || v === null ? "" : String(v).replace("T", " ");
+  if (v === undefined || v === null) return "";
+  // Only date-times swap their "T" for a space; other text is shown exactly as entered.
+  return f.type === "datetime" ? String(v).replace("T", " ") : String(v);
 }
 
 /** Add a name to a people list: trimmed, ≤ 120 chars, no case-insensitive duplicate. */
@@ -335,6 +423,7 @@ export const REQUEST_KINDS = [
   { key: "flight", label: "Flight" },
   { key: "hotel", label: "Hotel" },
   { key: "car", label: "Hire car" },
+  { key: "taxi", label: "Taxi" },
   { key: "asset", label: "Asset" },
   { key: "cash", label: "Cash" },
 ] as const;
@@ -549,3 +638,46 @@ export const safeFileName = (name: string) =>
 /** Bump when the documents change; every sign-in records the versions agreed to. */
 export const TERMS_VERSION = "draft-0";
 export const PRIVACY_VERSION = "draft-0";
+
+// ---- Contacts book (owner, 2026-11-10) --------------------------------------------------------------
+// One global book (root `contacts`) everyone signed in can search and add to; each trip links the
+// contacts it uses (trips/{id}/contacts/{contactId}) with a role on that trip.
+// TODO(owner): confirm the fields, and who may edit or delete a contact in the global book.
+
+export interface ContactInput { name: string; organisation: string; jobTitle: string; email: string; phone: string; country: string; notes: string }
+export interface Contact extends ContactInput { id: string; createdBy: string; createdByName: string; updatedAtMs: number }
+export interface TripContact extends Omit<ContactInput, "notes"> { id: string; tripRole: string; addedByName: string; addedAtMs: number }
+
+export const CONTACT_FIELDS: { key: keyof ContactInput; label: string; max: number; placeholder: string; multiline?: boolean; type?: string }[] = [
+  { key: "name", label: "Name *", max: 80, placeholder: "Full name" },
+  { key: "organisation", label: "Organisation", max: 120, placeholder: "e.g. British Embassy Lisbon" },
+  { key: "jobTitle", label: "Job title", max: 80, placeholder: "e.g. Security liaison" },
+  { key: "email", label: "Email", max: 254, placeholder: "name@example.com", type: "email" },
+  { key: "phone", label: "Phone", max: 40, placeholder: "+351…" },
+  { key: "country", label: "Country", max: 80, placeholder: "e.g. Portugal" },
+  { key: "notes", label: "Notes", max: 2000, placeholder: "Optional", multiline: true },
+];
+
+export const EMPTY_CONTACT: ContactInput = { name: "", organisation: "", jobTitle: "", email: "", phone: "", country: "", notes: "" };
+
+export function cleanContact(c: ContactInput): { value: ContactInput; errors: Partial<Record<keyof ContactInput, string>> } {
+  const value = { ...EMPTY_CONTACT };
+  const errors: Partial<Record<keyof ContactInput, string>> = {};
+  for (const f of CONTACT_FIELDS) {
+    const v = (c[f.key] ?? "").trim();
+    if (v.length > f.max) errors[f.key] = `Keep this under ${f.max} characters.`;
+    value[f.key] = f.key === "email" ? v.toLowerCase() : v;
+  }
+  if (!value.name) errors.name = "Enter a name.";
+  if (value.email && !EMAIL_RE.test(value.email)) errors.email = "Enter a valid email.";
+  return { value, errors };
+}
+
+/** Every word must appear in the contact's name, organisation, job title, email, phone or country. */
+export function contactMatches(c: Omit<ContactInput, "notes">, q: string): boolean {
+  const words = q.toLowerCase().split(/\s+/).filter(Boolean);
+  const hay = [c.name, c.organisation, c.jobTitle, c.email, c.phone, c.country].join(" ").toLowerCase();
+  return words.every((w) => hay.includes(w));
+}
+
+export const sortContacts = <T extends { name: string }>(cs: T[]) => [...cs].sort((a, b) => a.name.localeCompare(b.name, "en-GB", { sensitivity: "base" }));

@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  ITEM_SCHEMAS, addPerson, cleanInjuryRefs, displayValue, cleanItem, cleanVaccines, financeTotals, firstUnreadIndex, openCount, parseAmount, safeFileName,
+  ITEM_SCHEMAS, addPerson, byClass, dayNightFor, formatDuration, parseDuration, cleanInjuryRefs, displayValue, cleanItem, cleanVaccines, financeTotals, firstUnreadIndex, openCount, parseAmount, safeFileName,
   sortTlRequests, startsRun, statusHint, tripMatches, tripsFor, validateRequest, validateTlRequest,
   type ChatMessage, type FinanceEntry, type TlRequest, type Trip,
 } from "../src/model.ts";
@@ -39,9 +39,9 @@ test("status hints", () => {
 });
 
 test("cleanItem: required, lists, numbers, checkbox", () => {
-  const r = cleanItem(ITEM_SCHEMAS.flights, { flightNumber: "BA1", from: "LHR", to: "", passengers: ["A", "", " B "] });
-  assert.ok(r.errors.to);
-  assert.deepEqual(r.value.passengers, ["A", "B"]);
+  const r = cleanItem(ITEM_SCHEMAS.hotels, { name: "H", guests: ["A", "", " B "] });
+  assert.deepEqual(r.value.guests, ["A", "B"]);
+  assert.ok(cleanItem(ITEM_SCHEMAS.flights, { flightNumber: "BA1", from: "LHR", to: "" }).errors.to);
   const a = cleanItem(ITEM_SCHEMAS.assets, { name: "Laptop", quantity: "2", returned: true });
   assert.deepEqual(a.errors, {});
   assert.equal(a.value.quantity, 2);
@@ -104,7 +104,7 @@ test("safe file names", () => {
 test("booking cost: amount + currency, defaulting to GBP; bad amounts refused", () => {
   const h = cleanItem(ITEM_SCHEMAS.hotels, { name: "H", cost: "£1,240.5" });
   assert.deepEqual([h.value.cost, h.value.costCurrency], [1240.5, "GBP"]);
-  const f = cleanItem(ITEM_SCHEMAS.flights, { flightNumber: "X1", from: "A", to: "B", cost: "300", costCurrency: "EUR" });
+  const f = cleanItem(ITEM_SCHEMAS.flights, { flightStatus: "Planning", flightType: "Outbound", corporateTravel: "Yes", valueForMoney: "No", flightNumber: "X1", from: "A", to: "B", cost: "300", costCurrency: "EUR" });
   assert.equal(f.value.costCurrency, "EUR");
   assert.ok(cleanItem(ITEM_SCHEMAS.cars, { company: "Hertz", cost: "lots" }).errors.cost);
   assert.equal("costCurrency" in cleanItem(ITEM_SCHEMAS.cars, { company: "Hertz" }).value, false);
@@ -123,4 +123,47 @@ test("named persons: trimmed, no duplicates, capped", () => {
   assert.deepEqual(addPerson(["A"], " Alex  Brown "), ["A", "Alex Brown"]);
   assert.deepEqual(addPerson(["A"], "   "), ["A"]);
   assert.deepEqual(addPerson(["A", "B"], "C", 2), ["A", "B"]);
+});
+
+const goodFlight = { flightStatus: "Requested", flightType: "Inbound", flightNumber: "TP1350", from: "LIS", to: "LHR", corporateTravel: "Yes", valueForMoney: "Yes" };
+
+test("flight: status, type, corporate travel and value-for-money are required choices", () => {
+  assert.deepEqual(cleanItem(ITEM_SCHEMAS.flights, goodFlight).errors, {});
+  const e = cleanItem(ITEM_SCHEMAS.flights, { flightNumber: "X", from: "A", to: "B", flightStatus: "Booked" }).errors;
+  assert.ok(e.flightStatus && e.flightType && e.corporateTravel && e.valueForMoney);
+  assert.ok(cleanItem(ITEM_SCHEMAS.flights, { ...goodFlight, departAt: "2026-12-02T10:00", arriveAt: "2026-12-01T10:00" }).errors.arriveAt);
+});
+
+test("flight: passengers need a class each, grouped by class", () => {
+  const ok = cleanItem(ITEM_SCHEMAS.flights, { ...goodFlight, passengers: [{ name: " Jane ", travelClass: "Business class" }, { name: "Alex", travelClass: "First class" }, { name: "", travelClass: "Other" }] });
+  assert.deepEqual(ok.value.passengers, [{ name: "Jane", travelClass: "Business class" }, { name: "Alex", travelClass: "First class" }]);
+  assert.ok(cleanItem(ITEM_SCHEMAS.flights, { ...goodFlight, passengers: [{ name: "Jane", travelClass: "" }] }).errors.passengers);
+  assert.deepEqual(byClass(ok.value.passengers as never).map((g) => g.travelClass), ["First class", "Business class"]);
+});
+
+test("day or night from local times", () => {
+  assert.equal(dayNightFor("2026-12-01T07:10", "2026-12-01T09:55"), "Day");
+  assert.equal(dayNightFor("2026-12-01T21:30", "2026-12-01T23:50"), "Night");
+  assert.equal(dayNightFor("2026-12-01T05:00", ""), "Night");
+  assert.equal(dayNightFor("2026-12-01T16:00", "2026-12-02T07:00"), "Night");
+  assert.equal(dayNightFor("", "2026-12-02T07:00"), "");
+});
+
+test("duration parsing and display", () => {
+  assert.equal(parseDuration("7h 30m"), 450);
+  assert.equal(parseDuration("7:05"), 425);
+  assert.equal(parseDuration("45m"), 45);
+  assert.equal(parseDuration("2 hours"), 120);
+  assert.equal(parseDuration("165"), 165);
+  assert.equal(parseDuration("soon"), null);
+  assert.equal(parseDuration("99h"), null);
+  assert.equal(formatDuration(450), "7h 30m");
+  assert.equal(cleanItem(ITEM_SCHEMAS.flights, { ...goodFlight, durationMinutes: "2h 45m" }).value.durationMinutes, 165);
+});
+
+test("display: text is shown exactly; only date-times lose their T", () => {
+  const fn = ITEM_SCHEMAS.flights.fields.find((x) => x.key === "flightNumber")!;
+  const dep = ITEM_SCHEMAS.flights.fields.find((x) => x.key === "departAt")!;
+  assert.equal(displayValue(fn, { flightNumber: "TP1351" }), "TP1351");
+  assert.equal(displayValue(dep, { departAt: "2026-12-01T21:10" }), "2026-12-01 21:10");
 });

@@ -4,7 +4,7 @@ import {
   CURRENCIES, REQUEST_KINDS, REQUEST_STATUS_LABEL, formatDate, formatMoney, kindLabel, parseAmount, requestTone, sortTlRequests,
   validateTlRequest, type RequestKind, type TlRequest, type TlRequestStatus,
 } from "./model";
-import { addTlRequest, completeTlRequest, decideTlRequest, deleteTlRequest, resubmitTlRequest } from "./store";
+import { addTlRequest, completeTlRequest, decideTlRequest, deleteTlRequest, resubmitTlRequest, saveSummary, useSummaries, type Summary, type SummaryRole } from "./store";
 import type { TripCtx } from "./TripDetail";
 
 /**
@@ -25,6 +25,7 @@ export function RequestsTab({ ctx, requests }: { ctx: TripCtx; requests: TlReque
   const [completing, setCompleting] = useState<TlRequest | null>(null);
   const [removing, setRemoving] = useState<TlRequest | null>(null);
   const [err, setErr] = useState("");
+  const summaries = useSummaries(ctx.trip.id);
 
   const list = requests ? sortTlRequests(requests).filter((r) => (filter === "all" || r.status === filter) && (!kind || r.kind === kind)) : null;
   const counts = Object.fromEntries(FILTERS.map((f) => [f.key, requests ? requests.filter((r) => f.key === "all" || r.status === f.key).length : 0]));
@@ -34,6 +35,10 @@ export function RequestsTab({ ctx, requests }: { ctx: TripCtx; requests: TlReque
       <div className="page-head">
         <h2>Requests</h2><span className="spacer" />
         <button className="btn small" onClick={() => setAdding(true)}><Icon name="plus" size={16} /> New request</button>
+      </div>
+      <div className="grid2" style={{ marginBottom: 14 }}>
+        <SummaryBox ctx={ctx} role="teamLeader" title="Team Leader summary" canEdit={ctx.isTeamLeader} summary={summaries?.teamLeader ?? null} />
+        <SummaryBox ctx={ctx} role="spc" title="SPC summary" canEdit={ctx.isSpc} summary={summaries?.spc ?? null} />
       </div>
       <div className="tabs" role="tablist" aria-label="Status">
         {FILTERS.map((f) => (
@@ -67,7 +72,7 @@ export function RequestsTab({ ctx, requests }: { ctx: TripCtx; requests: TlReque
                     {r.neededBy && <Badge>By {formatDate(r.neededBy)}</Badge>}
                   </div>
                 )}
-                {r.details && <div style={{ whiteSpace: "pre-wrap" }}>{r.details}</div>}
+                {r.details && <div style={{ whiteSpace: "pre-wrap" }}><span className="muted small">Rationale</span><br />{r.details}</div>}
                 {r.decidedByName && (
                   <div className="small" style={{ color: r.status === "rejected" ? "var(--bad)" : "var(--ink-2)" }}>
                     {r.status === "rejected" ? "Rejected" : "Approved"} by {r.decidedByName} · {relTime(r.decidedAtMs)}{r.decisionNote ? ` — ${r.decisionNote}` : ""}
@@ -98,9 +103,39 @@ export function RequestsTab({ ctx, requests }: { ctx: TripCtx; requests: TlReque
   );
 }
 
+/** Free-text summary kept by one role holder (Team Leader or SPC); read-only for everyone else. */
+function SummaryBox({ ctx, role, title, canEdit, summary }: { ctx: TripCtx; role: SummaryRole; title: string; canEdit: boolean; summary: Summary | null }) {
+  const [text, setText] = useState<string | null>(null);
+  const [msg, setMsg] = useState<{ tone: "ok" | "bad"; text: string } | null>(null);
+  const value = text ?? summary?.text ?? "";
+  return (
+    <section className="card stack" style={{ gap: 8 }}>
+      {canEdit ? (
+        <>
+          <TextField label={title} multiline value={value} onChange={(v) => { setText(v); setMsg(null); }} maxLength={5000} placeholder="Summary" />
+          <div className="row">
+            <button className="btn small" disabled={text === null} onClick={async () => {
+              try { await saveSummary(ctx.session, ctx.trip.id, role, value); setText(null); setMsg({ tone: "ok", text: "Saved." }); }
+              catch (e) { setMsg({ tone: "bad", text: errorText(e) }); }
+            }}>Save</button>
+            {summary?.updatedAtMs ? <span className="muted small">{summary.byName} · {relTime(summary.updatedAtMs)}</span> : null}
+          </div>
+          {msg && <Notice tone={msg.tone}>{msg.text}</Notice>}
+        </>
+      ) : (
+        <>
+          <h3>{title}</h3>
+          <div style={{ whiteSpace: "pre-wrap" }}>{summary?.text || <span className="muted">—</span>}</div>
+          {summary?.updatedAtMs ? <span className="muted small">{summary.byName} · {relTime(summary.updatedAtMs)}</span> : null}
+        </>
+      )}
+    </section>
+  );
+}
+
 const TITLE_HINT: Record<RequestKind, string> = {
   resource: "e.g. Additional analyst", flight: "e.g. Return flight LHR–JFK", hotel: "e.g. 3 nights near embassy",
-  car: "e.g. 7-seat hire car", asset: "e.g. Satellite phone", cash: "e.g. Local currency float",
+  car: "e.g. 7-seat hire car", taxi: "e.g. Airport transfer on arrival", asset: "e.g. Satellite phone", cash: "e.g. Local currency float",
 };
 
 function NewTlRequest({ ctx, onClose }: { ctx: TripCtx; onClose: () => void }) {
@@ -148,7 +183,7 @@ function NewTlRequest({ ctx, onClose }: { ctx: TripCtx; onClose: () => void }) {
           </div>
         )}
         <TextField label="Needed by" type="date" value={neededBy} onChange={setNeededBy} />
-        <TextField label="Details" multiline placeholder="Anything the Team Leader needs to know" value={details} onChange={setDetails} maxLength={2000} />
+        <TextField label="Rationale" multiline placeholder="Why is this needed?" value={details} onChange={setDetails} maxLength={2000} />
         {err && <Notice tone="bad">{err}</Notice>}
       </div>
     </Modal>

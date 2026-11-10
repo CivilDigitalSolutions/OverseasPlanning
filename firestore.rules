@@ -98,11 +98,16 @@ service cloud.firestore {
 
       // Flights, hotels, hire cars, assets — any member. Keys must match web/src/model.ts ITEM_SCHEMAS.
       function itemKeys(coll) {
-        return coll == 'flights' ? ['airline', 'flightNumber', 'from', 'to', 'departAt', 'arriveAt', 'bookingRef', 'cost', 'costCurrency', 'passengers', 'notes']
+        return coll == 'flights' ? ['flightStatus', 'flightType', 'airline', 'flightNumber', 'from', 'departAt', 'to', 'arriveAt', 'dayNight',
+                                     'durationMinutes', 'bookingRef', 'cost', 'costCurrency', 'corporateTravel', 'valueForMoney', 'passengers', 'notes']
+                                     .concat(spcFlightKeys())
           : coll == 'hotels' ? ['name', 'address', 'city', 'phone', 'checkIn', 'checkOut', 'bookingRef', 'cost', 'costCurrency', 'guests', 'notes']
           : coll == 'cars' ? ['company', 'vehicle', 'insuranceClass', 'registration', 'collectionLocation', 'collectionDate', 'dropOffLocation', 'dropOffDate', 'bookingRef', 'cost', 'costCurrency', 'drivers', 'notes']
           : ['name', 'category', 'serialNumber', 'quantity', 'carriedBy', 'returned', 'notes'];
       }
+      /** SPC decision on a flight: written ONLY by the trip's SPC. Any other edit may clear it, never set it. */
+      function spcFlightKeys() { return ['spcDecision', 'spcRationale', 'spcDecidedBy', 'spcDecidedByName', 'spcDecidedAt']; }
+      function optIn(m, k, vals) { return !(k in m) || m[k] in vals; }
       function validItem(coll, m) {
         return m.keys().hasOnly(itemKeys(coll).concat(['createdBy', 'createdByName', 'createdAt', 'updatedAt']))
           && optStr(m, 'notes', 2000) && optStr(m, 'createdByName', 80)
@@ -115,14 +120,31 @@ service cloud.firestore {
           && optDate(m, 'collectionDate') && optDate(m, 'dropOffDate') && optDate(m, 'checkIn') && optDate(m, 'checkOut')
           // A booking cost always carries its currency.
           && (!('cost' in m) || (m.cost is number && m.cost >= 0 && m.cost <= 10000000 && reqStr(m, 'costCurrency', 10)))
-          && (!('costCurrency' in m) || 'cost' in m);
+          && (!('costCurrency' in m) || 'cost' in m)
+          && optIn(m, 'flightStatus', ['Planning', 'Requested', 'Confirmed'])
+          && optIn(m, 'flightType', ['Outbound', 'Inbound', 'Onward', 'Connecting'])
+          && optIn(m, 'dayNight', ['Day', 'Night'])
+          && optIn(m, 'corporateTravel', ['Yes', 'No']) && optIn(m, 'valueForMoney', ['Yes', 'No'])
+          && (!('durationMinutes' in m) || (m.durationMinutes is int && m.durationMinutes >= 1 && m.durationMinutes <= 2880))
+          && optStr(m, 'departAt', 20) && optStr(m, 'arriveAt', 20)
+          && optIn(m, 'spcDecision', ['approved', 'not_approved']) && optStr(m, 'spcRationale', 2000) && optStr(m, 'spcDecidedByName', 80);
       }
       match /{coll}/{itemId} {
         allow read: if coll in ['flights', 'hotels', 'cars', 'assets'] && onTrip(tripId);
         allow create: if coll in ['flights', 'hotels', 'cars', 'assets'] && onTrip(tripId) && validItem(coll, d())
-          && d().createdBy == me() && d().createdAt == request.time && d().updatedAt == request.time;
+          && d().createdBy == me() && d().createdAt == request.time && d().updatedAt == request.time
+          && !d().keys().hasAny(spcFlightKeys());
         allow update: if coll in ['flights', 'hotels', 'cars', 'assets'] && onTrip(tripId) && validItem(coll, d())
-          && d().createdBy == resource.data.createdBy && d().createdAt == resource.data.createdAt && d().updatedAt == request.time;
+          && d().createdBy == resource.data.createdBy && d().createdAt == resource.data.createdAt && d().updatedAt == request.time
+          && (
+            // An ordinary edit always leaves the flight WITHOUT an SPC decision: editing a decided flight
+            // clears the decision, so a changed flight must be approved again. It can never set one.
+            !d().keys().hasAny(spcFlightKeys())
+            // The SPC records a decision with a rationale, touching nothing else.
+            || (coll == 'flights' && isSpc(tripId) && changed().hasOnly(spcFlightKeys().concat(['updatedAt']))
+                && d().spcDecision in ['approved', 'not_approved'] && reqStr(d(), 'spcRationale', 2000)
+                && d().spcDecidedBy == me() && d().spcDecidedAt == request.time)
+          );
         allow delete: if coll in ['flights', 'hotels', 'cars', 'assets'] && onTrip(tripId);
       }
 
@@ -154,7 +176,7 @@ service cloud.firestore {
         allow create: if onTrip(tripId)
           && d().keys().hasOnly(['kind', 'title', 'details', 'quantity', 'amount', 'currency', 'neededBy', 'createdBy', 'createdByName', 'createdAt', 'status'])
           && d().createdBy == me() && d().status == 'pending' && d().createdAt == request.time
-          && d().kind in ['resource', 'flight', 'hotel', 'car', 'asset', 'cash']
+          && d().kind in ['resource', 'flight', 'hotel', 'car', 'taxi', 'asset', 'cash']
           && reqStr(d(), 'title', 120) && optStr(d(), 'details', 2000) && optStr(d(), 'createdByName', 80) && optDate(d(), 'neededBy')
           && (!('quantity' in d()) || (d().quantity is int && d().quantity >= 1 && d().quantity <= 1000))
           && (!('amount' in d()) || (d().amount is number && d().amount > 0 && d().amount <= 1000000 && reqStr(d(), 'currency', 10)));
@@ -173,6 +195,24 @@ service cloud.firestore {
             && !d().keys().hasAny(['decidedBy', 'decidedByName', 'decidedAt', 'decisionNote']));
         // The creator may withdraw their own request while it awaits approval; otherwise the SPC only.
         allow delete: if (onTrip(tripId) && resource.data.createdBy == me() && resource.data.status == 'pending') || isSpc(tripId);
+      }
+
+      // Requests: Team Leader summary and SPC summary, each written only by that role holder.
+      match /summaries/{role} {
+        allow read: if onTrip(tripId);
+        allow write: if ((role == 'teamLeader' && verified() && leaderUidOf(trip(tripId)) == me()) || (role == 'spc' && isSpc(tripId)))
+          && d().keys().hasOnly(['text', 'byUid', 'byName', 'updatedAt'])
+          && optStr(d(), 'text', 5000) && optStr(d(), 'byName', 80) && d().byUid == me() && d().updatedAt == request.time;
+      }
+
+      // Contacts linked to this trip (a copy of the book entry plus the role on this trip).
+      match /contacts/{contactId} {
+        allow read: if onTrip(tripId);
+        allow create, update: if onTrip(tripId)
+          && d().keys().hasOnly(['name', 'organisation', 'jobTitle', 'email', 'phone', 'country', 'tripRole', 'addedBy', 'addedByName', 'addedAt'])
+          && reqStr(d(), 'name', 80) && validContactFields(d()) && optStr(d(), 'tripRole', 80) && optStr(d(), 'addedByName', 80)
+          && d().addedBy == me() && d().addedAt == request.time;
+        allow delete: if onTrip(tripId);
       }
 
       // Vaccination declarations (health data): your own, plus the Team Leader and HOST read all.
@@ -215,6 +255,26 @@ service cloud.firestore {
         allow write: if onTrip(tripId) && me() == uid && d().keys().hasOnly(['name', 'text', 'updatedAt'])
           && optStr(d(), 'name', 80) && optStr(d(), 'text', 5000) && d().updatedAt == request.time;
       }
+    }
+
+    // ---- global contacts book (owner, 2026-11-10) ---------------------------------------------
+    // Everyone signed in with a confirmed email searches it and adds to it; the creator or HOST
+    // edits an entry; only HOST deletes one (trip records keep their own copy).
+    function validContactFields(m) {
+      return optStr(m, 'organisation', 120) && optStr(m, 'jobTitle', 80) && optStr(m, 'phone', 40) && optStr(m, 'country', 80)
+        && (!('email' in m) || m.email == '' || (m.email is string && m.email.size() <= 254 && m.email.matches('^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$')));
+    }
+    match /contacts/{contactId} {
+      function validContact() {
+        return d().keys().hasOnly(['name', 'organisation', 'jobTitle', 'email', 'phone', 'country', 'notes', 'createdBy', 'createdByName', 'createdAt', 'updatedAt'])
+          && reqStr(d(), 'name', 80) && validContactFields(d()) && optStr(d(), 'notes', 2000) && optStr(d(), 'createdByName', 80)
+          && d().updatedAt == request.time;
+      }
+      allow read: if verified();
+      allow create: if verified() && validContact() && d().createdBy == me() && d().createdAt == request.time;
+      allow update: if verified() && validContact() && (resource.data.createdBy == me() || isHost())
+        && d().createdBy == resource.data.createdBy && d().createdAt == resource.data.createdAt;
+      allow delete: if isHost();
     }
 
     // rateLimits, passkeys, passkeyChallenges, roleChanges and anything else: functions only.

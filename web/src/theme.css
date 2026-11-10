@@ -177,7 +177,7 @@ input[aria-invalid="true"], select[aria-invalid="true"], textarea[aria-invalid="
 .send:disabled { opacity: .5; }
 
 /* ---- misc ---- */
-.kv { display: grid; grid-template-columns: max-content 1fr; gap: 6px 14px; font-size: .92rem; margin: 0; }
+.kv { display: grid; grid-template-columns: fit-content(45%) minmax(0, 1fr); gap: 6px 14px; font-size: .92rem; margin: 0; }
 .kv dt { color: var(--ink-2); }
 .kv dd { margin: 0; overflow-wrap: anywhere; }
 .progress { height: 6px; background: var(--line); border-radius: 999px; overflow: hidden; }
@@ -193,3 +193,6 @@ table.simple td.num, table.simple th.num { text-align: right; white-space: nowra
 .chip { display: inline-flex; align-items: center; gap: 4px; padding: 4px 6px 4px 10px; border-radius: 999px; background: var(--primary-soft); color: var(--ink); font-size: .88rem; font-weight: 600; border: 1px solid transparent; }
 .chip button { border: 0; background: transparent; color: var(--ink-2); cursor: pointer; padding: 2px; line-height: 0; border-radius: 50%; }
 .chip.pick { background: #fff; border-color: #B9C3D3; color: var(--primary); padding: 4px 10px 4px 6px; cursor: pointer; font: inherit; font-size: .85rem; }
+.chip-select { border: 0; background: transparent; font: inherit; font-size: .78rem; color: var(--ink-2); min-height: 0; padding: 0 2px; width: auto; }
+.passenger-add { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) auto; gap: 8px; }
+@media (max-width: 420px) { .passenger-add { grid-template-columns: minmax(0, 1fr) auto; } .passenger-add select { grid-column: 1 / -1; } }

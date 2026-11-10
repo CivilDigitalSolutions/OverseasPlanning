@@ -86,10 +86,28 @@ Storage: `trips/{tripId}/attachments/{attId}/{fileName}` (≤ 25 MB, members onl
 ## 5. Planning tabs
 
 Single trip screen with tab navigation: Overview · Requests · Flights · Hotels · Hire cars ·
-Assets · Messages · Attachments · Vaccinations · Access · Debrief, plus **PDF export**.
+Assets · Messages · Attachments · Vaccinations · Contacts · Access · Debrief, plus **PDF export**.
 
-- **Flights**: airline, flight number, from, to, departs, arrives, booking ref, **cost of booking**
-  (amount + currency), **named persons**, notes.
+- **Flights** (owner, 2026-11-10):
+  - **Flight status**: Planning / Requested / Confirmed. **Flight type**: Outbound / Inbound /
+    Onward / Connecting. Airline, **flight number**, booking ref, **flight cost** (+ currency).
+  - **Departure airport + local date & time**; **arrival airport + local date & time** (not before
+    departure).
+  - **Day or night flight**: filled in automatically from the local times — Night when it departs
+    19:00–05:59 or lands on a later date (overnight), otherwise Day — and can be changed.
+    TODO(owner): confirm the definition.
+  - **Flight duration**: typed ("7h 30m", "7:30" or minutes), stored in minutes. Not calculated:
+    local times at each end are in different time zones.
+  - **Booked with corporate travel services?** Yes/No. **Have you considered booking options to
+    achieve best value for money?** Yes/No (asked of the person entering the flight). Both required.
+  - **People booked**, each under a **class**: First class, Business class, Premium economy,
+    Charter flight, Other; shown grouped by class. TODO(owner): Economy is not in the list given.
+  - **SPC approval**: only the trip's SPC records *Approved* or *Not approved*, with a required
+    free-text rationale (who, when and why are stored: `spcDecision`, `spcRationale`,
+    `spcDecidedBy/Name/At`). **Editing a decided flight clears the decision**, so a changed flight
+    is approved again (enforced in `firestore.rules`).
+  - **Flight policy**: a book icon ("Flight policy") at the top of the Flights tab and in the flight
+    form opens the policy. TODO(owner): PLACEHOLDER text in `web/src/flightPolicy.ts`.
 - **Hotels**: name, address, city, phone, check-in/out, booking ref, **cost of booking**,
   **named persons**, notes.
 - **Hire cars** (owner, 2026-11-10): **hire car company**, vehicle, **insurance class**,
@@ -114,8 +132,11 @@ Assets · Messages · Attachments · Vaccinations · Access · Debrief, plus **P
 - **Access**: anyone with access adds people by email; unknown emails wait as "pending sign-up"
   and are granted when that person confirms their email (`syncPendingAccess`). HOST removes.
 - **Requests to the Team Leader, with approval**:
-  - Types: **Resource (people), Flight, Hotel, Hire car, Asset, Cash** (cash adds amount +
-    currency; people/assets add quantity; all have needed-by and details).
+  - Types: **Resource (people), Flight, Hotel, Hire car, Taxi, Asset, Cash** (cash adds amount +
+    currency; people/assets add quantity; all have needed-by and a free-text **Rationale**).
+  - At the top of the Requests tab: a **Team Leader summary** (written only by the Team Leader) and
+    an **SPC summary** (written only by the SPC), free text, read by everyone on the trip
+    (`trips/{id}/summaries/{teamLeader|spc}`).
   - Workflow: **Awaiting approval → Approved / Rejected → Completed**. **Only the trip's SPC
     approves or rejects** (with a note) — not HOST, not the Team Leader (owner decision
     2026-11-10; enforced in `firestore.rules` `isSpc`). The SPC also marks an
@@ -132,6 +153,19 @@ Assets · Messages · Attachments · Vaccinations · Access · Debrief, plus **P
   hotels, cars, assets, requests + decisions, vaccination declarations the exporter may read,
   attachment list, debrief, financial debrief, messages) client-side with jsPDF.
   - TODO(owner): protective marking / classification banner on exports; include attachment files?
+
+### 6a. Contacts book (owner, 2026-11-10)
+
+- A **global contacts book** (`contacts/{id}`: name, organisation, job title, email, phone, country,
+  notes). Everyone signed in (confirmed email) can search it and add to it; the creator or HOST
+  edits an entry; only HOST deletes one.
+- Each trip has a **Contacts** tab: search the book (every word across name, organisation, title,
+  email, phone, country), add a contact with their **role on this trip**, or create a new contact
+  (saved to the book and added to the trip). The trip keeps its own copy
+  (`trips/{id}/contacts/{contactId}`) so its record and PDF stand on their own; the tab shows the
+  book's current details where available.
+- TODO(owner): field list; who may edit/delete book entries; duplicates/merging; a search index if
+  the book grows past a few thousand entries (search is in the browser today).
 
 ## 7. Debrief
 

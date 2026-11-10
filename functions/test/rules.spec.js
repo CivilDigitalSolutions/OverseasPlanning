@@ -181,6 +181,86 @@ describe("requests to the Team Leader (approval)", () => {
   });
 });
 
+describe("flights: new fields and SPC approval", () => {
+  const fl = (o = {}) => ({
+    flightStatus: "Requested", flightType: "Outbound", flightNumber: "TP1351", from: "LHR", departAt: "2026-12-01T07:10", to: "LIS",
+    arriveAt: "2026-12-01T09:55", dayNight: "Day", durationMinutes: 165, cost: 612.4, costCurrency: "GBP", corporateTravel: "Yes",
+    valueForMoney: "Yes", passengers: [{ name: "Jane", travelClass: "Business class" }],
+    createdBy: "alice", createdByName: "A", createdAt: serverTimestamp(), updatedAt: serverTimestamp(), ...o,
+  });
+  const decide = (uid, o = {}) => ({ spcDecision: "approved", spcRationale: "Cheapest direct option.", spcDecidedBy: uid, spcDecidedByName: "S", spcDecidedAt: serverTimestamp(), updatedAt: serverTimestamp(), ...o });
+  beforeEach(() => env.withSecurityRulesDisabled((ctx) => setDoc(doc(ctx.firestore(), "trips", TRIP, "flights", "f1"), { ...fl(), createdAt: 1, updatedAt: 1 })));
+
+  it("F1 members add flights with valid status/type/yes-no values only", async () => {
+    await assertSucceeds(addDoc(collection(member(), "trips", TRIP, "flights"), fl()));
+    await assertFails(addDoc(collection(member(), "trips", TRIP, "flights"), fl({ flightStatus: "Booked" })));
+    await assertFails(addDoc(collection(member(), "trips", TRIP, "flights"), fl({ flightType: "Return" })));
+    await assertFails(addDoc(collection(member(), "trips", TRIP, "flights"), fl({ corporateTravel: "Maybe" })));
+    await assertFails(addDoc(collection(member(), "trips", TRIP, "flights"), fl({ durationMinutes: 99999 })));
+  });
+  it("F2 nobody can create a flight already approved", () =>
+    assertFails(addDoc(collection(spc(), "trips", TRIP, "flights"), fl({ createdBy: "spc", spcDecision: "approved", spcRationale: "x", spcDecidedBy: "spc", spcDecidedAt: serverTimestamp() }))));
+  it("F3 ONLY the SPC records a decision, with a rationale", async () => {
+    await assertFails(updateDoc(doc(member(), "trips", TRIP, "flights", "f1"), decide("alice")));
+    await assertFails(updateDoc(doc(leader(), "trips", TRIP, "flights", "f1"), decide("lead")));
+    await assertFails(updateDoc(doc(host(), "trips", TRIP, "flights", "f1"), decide("host")));
+    await assertFails(updateDoc(doc(spc(), "trips", TRIP, "flights", "f1"), decide("spc", { spcRationale: "" })));
+    await assertFails(updateDoc(doc(spc(), "trips", TRIP, "flights", "f1"), { ...decide("spc"), cost: 1 }));
+    await assertSucceeds(updateDoc(doc(spc(), "trips", TRIP, "flights", "f1"), decide("spc")));
+  });
+  it("F4 editing a decided flight must clear the decision", async () => {
+    await assertSucceeds(updateDoc(doc(spc(), "trips", TRIP, "flights", "f1"), decide("spc")));
+    await assertFails(updateDoc(doc(member(), "trips", TRIP, "flights", "f1"), { cost: 900, updatedAt: serverTimestamp() }));
+    await assertSucceeds(updateDoc(doc(member(), "trips", TRIP, "flights", "f1"), {
+      cost: 900, updatedAt: serverTimestamp(), spcDecision: deleteField(), spcRationale: deleteField(), spcDecidedBy: deleteField(), spcDecidedByName: deleteField(), spcDecidedAt: deleteField(),
+    }));
+  });
+});
+
+describe("request summaries and taxi", () => {
+  const sum = (uid) => ({ text: "All good.", byUid: uid, byName: "X", updatedAt: serverTimestamp() });
+  it("S1 Team Leader writes the TL summary; SPC writes the SPC summary; nobody else", async () => {
+    await assertSucceeds(setDoc(doc(leader(), "trips", TRIP, "summaries", "teamLeader"), sum("lead")));
+    await assertFails(setDoc(doc(spc(), "trips", TRIP, "summaries", "teamLeader"), sum("spc")));
+    await assertSucceeds(setDoc(doc(spc(), "trips", TRIP, "summaries", "spc"), sum("spc")));
+    await assertFails(setDoc(doc(leader(), "trips", TRIP, "summaries", "spc"), sum("lead")));
+    await assertFails(setDoc(doc(host(), "trips", TRIP, "summaries", "spc"), sum("host")));
+    await assertFails(setDoc(doc(member(), "trips", TRIP, "summaries", "other"), sum("alice")));
+    await assertSucceeds(getDoc(doc(member(), "trips", TRIP, "summaries", "spc")));
+    await assertFails(getDoc(doc(outsider(), "trips", TRIP, "summaries", "spc")));
+  });
+  it("S2 taxi is a request type", () =>
+    assertSucceeds(addDoc(collection(member(), "trips", TRIP, "tlRequests"), { kind: "taxi", title: "Airport transfer", details: "Late arrival", createdBy: "alice", createdAt: serverTimestamp(), status: "pending" })));
+});
+
+describe("contacts book", () => {
+  const c = (uid, o = {}) => ({ name: "Ana Silva", organisation: "British Embassy", jobTitle: "Liaison", email: "ana@example.pt", phone: "+351 1", country: "Portugal", notes: "", createdBy: uid, createdByName: "X", createdAt: serverTimestamp(), updatedAt: serverTimestamp(), ...o });
+  beforeEach(() => env.withSecurityRulesDisabled((ctx) => setDoc(doc(ctx.firestore(), "contacts", "c1"), { ...c("alice"), createdAt: 1, updatedAt: 1 })));
+  it("C1 anyone verified searches and adds; unverified cannot", async () => {
+    await assertSucceeds(getDocs(collection(outsider(), "contacts")));
+    await assertFails(getDocs(collection(unverified(), "contacts")));
+    await assertSucceeds(addDoc(collection(outsider(), "contacts"), c("eve")));
+    await assertFails(addDoc(collection(outsider(), "contacts"), c("alice")));
+    await assertFails(addDoc(collection(outsider(), "contacts"), c("eve", { email: "not-an-email" })));
+    await assertFails(addDoc(collection(outsider(), "contacts"), c("eve", { salary: 1 })));
+  });
+  it("C2 creator or HOST edits; only HOST deletes", async () => {
+    await assertFails(updateDoc(doc(leader(), "contacts", "c1"), { phone: "+351 2", updatedAt: serverTimestamp() }));
+    await assertSucceeds(updateDoc(doc(member(), "contacts", "c1"), { phone: "+351 2", updatedAt: serverTimestamp() }));
+    await assertSucceeds(updateDoc(doc(host(), "contacts", "c1"), { phone: "+351 3", updatedAt: serverTimestamp() }));
+    await assertFails(updateDoc(doc(host(), "contacts", "c1"), { createdBy: "host", updatedAt: serverTimestamp() }));
+    await assertFails(deleteDoc(doc(member(), "contacts", "c1")));
+    await assertSucceeds(deleteDoc(doc(host(), "contacts", "c1")));
+  });
+  it("C3 trip contacts: members link; other trips' members cannot", async () => {
+    const link = (uid) => ({ name: "Ana Silva", organisation: "British Embassy", jobTitle: "", email: "ana@example.pt", phone: "", country: "Portugal", tripRole: "Embassy liaison", addedBy: uid, addedByName: "X", addedAt: serverTimestamp() });
+    await assertSucceeds(setDoc(doc(member(), "trips", TRIP, "contacts", "c1"), link("alice")));
+    await assertFails(setDoc(doc(as("bob"), "trips", TRIP, "contacts", "c1"), link("bob")));
+    await assertFails(getDocs(collection(as("bob"), "trips", TRIP, "contacts")));
+    await assertSucceeds(deleteDoc(doc(leader(), "trips", TRIP, "contacts", "c1")));
+  });
+});
+
 describe("request deletion", () => {
   it("16b creator withdraws while pending; afterwards only the SPC deletes (not HOST)", async () => {
     await assertFails(deleteDoc(doc(host(), "trips", TRIP, "tlRequests", "q1")));

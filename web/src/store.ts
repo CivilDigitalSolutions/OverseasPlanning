@@ -13,7 +13,7 @@ import { useEffect, useState } from "react";
 import { auth, db, functions, storage } from "./firebase";
 import {
   EMPTY_DEBRIEF, MAX_ATTACHMENT_BYTES, PRIVACY_VERSION, TERMS_VERSION, safeFileName,
-  REQUEST_KINDS, type ChatMessage, type Debrief, type FinanceEntry, type RequestKind, type TlRequestStatus,
+  REQUEST_KINDS, type ChatMessage, type Contact, type ContactInput, type TripContact, type Debrief, type FinanceEntry, type RequestKind, type TlRequestStatus,
   type VaccinationDeclaration, type VaccineRecord, type RequestInput, type RoleHolder, type TlRequest, type Trip, type TripRequest,
   type TripRoleKey, type TripStatus,
 } from "./model";
@@ -216,6 +216,14 @@ export const updateItem = (tripId: string, coll: string, id: string, values: Rec
 
 export const deleteItem = (tripId: string, coll: string, id: string) => deleteDoc(doc(db, "trips", tripId, coll, id));
 
+
+/** The trip's SPC approves (or not) a flight, with a written rationale (rules: SPC only). */
+export const decideFlight = (s: Session, tripId: string, id: string, decision: "approved" | "not_approved", rationale: string) =>
+  updateDoc(doc(db, "trips", tripId, "flights", id), {
+    spcDecision: decision, spcRationale: rationale.trim().slice(0, 2000), spcDecidedBy: s.uid, spcDecidedByName: s.name.slice(0, 80),
+    spcDecidedAt: serverTimestamp(), updatedAt: serverTimestamp(),
+  });
+
 // ---- Messages ---------------------------------------------------------------------------------
 
 export function useMessages(tripId: string): ChatMessage[] | null {
@@ -348,6 +356,28 @@ export const resubmitTlRequest = (tripId: string, id: string) =>
 
 export const deleteTlRequest = (tripId: string, id: string) => deleteDoc(doc(db, "trips", tripId, "tlRequests", id));
 
+
+// ---- Request summaries (Team Leader / SPC) --------------------------------------------------------
+
+export type SummaryRole = "teamLeader" | "spc";
+export interface Summary { text: string; byName: string; updatedAtMs: number }
+
+/** trips/{id}/summaries/{teamLeader|spc}: written only by that role holder (rules). */
+export function useSummaries(tripId: string): Record<SummaryRole, Summary | null> | null {
+  const [m, setM] = useState<Record<SummaryRole, Summary | null> | null>(null);
+  useEffect(() => onSnapshot(collection(db, "trips", tripId, "summaries"), (snap) => {
+    const out: Record<SummaryRole, Summary | null> = { teamLeader: null, spc: null };
+    for (const d of snap.docs) if (d.id === "teamLeader" || d.id === "spc") {
+      const v = dataOf(d);
+      out[d.id] = { text: str(v.text), byName: str(v.byName), updatedAtMs: ms(v.updatedAt) };
+    }
+    setM(out);
+  }, () => setM({ teamLeader: null, spc: null })), [tripId]);
+  return m;
+}
+export const saveSummary = (s: Session, tripId: string, role: SummaryRole, text: string) =>
+  setDoc(doc(db, "trips", tripId, "summaries", role), { text: text.trim().slice(0, 5000), byUid: s.uid, byName: s.name.slice(0, 80), updatedAt: serverTimestamp() });
+
 // ---- Vaccination declarations ------------------------------------------------------------------
 
 const toVacc = (d: DocumentSnapshot): VaccinationDeclaration => {
@@ -397,6 +427,55 @@ export const saveDebrief = (s: Session, tripId: string, d: Omit<Debrief, "update
     ...d, updatedByUid: s.uid, updatedByName: s.name.slice(0, 80), updatedAt: serverTimestamp(),
   });
 
+
+// ---- Contacts book ------------------------------------------------------------------------------
+
+const toContact = (d: DocumentSnapshot): Contact => {
+  const v = dataOf(d);
+  return {
+    id: d.id, name: str(v.name), organisation: str(v.organisation), jobTitle: str(v.jobTitle), email: str(v.email), phone: str(v.phone),
+    country: str(v.country), notes: str(v.notes), createdBy: str(v.createdBy), createdByName: str(v.createdByName), updatedAtMs: ms(v.updatedAt),
+  };
+};
+
+/** The whole global book (searched in the browser). TODO(owner): a search index if it grows past a few thousand. */
+export function useContacts(): Contact[] | null {
+  const [list, setList] = useState<Contact[] | null>(null);
+  useEffect(() => onSnapshot(collection(db, "contacts"), (snap) => setList(snap.docs.map(toContact)), () => setList([])), []);
+  return list;
+}
+
+/** Create (id null) or update a contact in the global book. Returns its id. */
+export async function saveContact(s: Session, id: string | null, c: ContactInput): Promise<string> {
+  if (id) {
+    await updateDoc(doc(db, "contacts", id), { ...c, updatedAt: serverTimestamp() });
+    return id;
+  }
+  const ref = await addDoc(collection(db, "contacts"), { ...c, createdBy: s.uid, createdByName: s.name.slice(0, 80), createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+  return ref.id;
+}
+export const deleteContact = (id: string) => deleteDoc(doc(db, "contacts", id));
+
+const toTripContact = (d: DocumentSnapshot): TripContact => {
+  const v = dataOf(d);
+  return {
+    id: d.id, name: str(v.name), organisation: str(v.organisation), jobTitle: str(v.jobTitle), email: str(v.email), phone: str(v.phone),
+    country: str(v.country), tripRole: str(v.tripRole), addedByName: str(v.addedByName), addedAtMs: ms(v.addedAt),
+  };
+};
+export function useTripContacts(tripId: string): TripContact[] | null {
+  const [list, setList] = useState<TripContact[] | null>(null);
+  useEffect(() => onSnapshot(collection(db, "trips", tripId, "contacts"), (snap) => setList(snap.docs.map(toTripContact)), () => setList([])), [tripId]);
+  return list;
+}
+/** Link a book contact to the trip (a copy of its details, so the trip record stands on its own). */
+export const addContactToTrip = (s: Session, tripId: string, c: Contact, tripRole: string) =>
+  setDoc(doc(db, "trips", tripId, "contacts", c.id), {
+    name: c.name, organisation: c.organisation, jobTitle: c.jobTitle, email: c.email, phone: c.phone, country: c.country,
+    tripRole: tripRole.trim().slice(0, 80), addedBy: s.uid, addedByName: s.name.slice(0, 80), addedAt: serverTimestamp(),
+  });
+export const removeTripContact = (tripId: string, id: string) => deleteDoc(doc(db, "trips", tripId, "contacts", id));
+
 // ---- HOST administration ------------------------------------------------------------------------
 
 export const setHostRole = (email: string, host: boolean) => call<{ uid: string }>("setHostRole", { email, host });
@@ -443,6 +522,8 @@ export interface TripSnapshot {
   messages: ChatMessage[];
   attachments: Attachment[];
   tlRequests: TlRequest[];
+  summaries: Record<"teamLeader" | "spc", { text: string; byName: string } | null>;
+  contacts: TripContact[];
   vaccinations: VaccinationDeclaration[];
   debrief: Debrief;
   finance: FinanceEntry[];
@@ -477,6 +558,11 @@ export async function loadTripSnapshot(tripId: string): Promise<TripSnapshot> {
       .sort((a, b) => a.createdAtMs - b.createdAtMs),
     attachments: attachments.docs.map((d) => ({ id: d.id, name: str(v(d).name), path: str(v(d).path), size: Number(v(d).size) || 0, contentType: str(v(d).contentType), uploadedBy: str(v(d).uploadedBy), uploadedByName: str(v(d).uploadedByName), createdAtMs: ms(v(d).createdAt) })),
     tlRequests: tl.docs.map(toTl),
+    contacts: await getDocs(collection(db, "trips", tripId, "contacts")).then((x) => x.docs.map(toTripContact)).catch(() => []),
+    summaries: await getDocs(collection(db, "trips", tripId, "summaries")).then((x) => {
+      const m = Object.fromEntries(x.docs.map((d) => [d.id, { text: str(dataOf(d).text), byName: str(dataOf(d).byName) }]));
+      return { teamLeader: m.teamLeader ?? null, spc: m.spc ?? null };
+    }).catch(() => ({ teamLeader: null, spc: null })),
     vaccinations,
     debrief: debrief.exists() ? {
       wentWell: str(db0.wentWell), couldBeBetter: str(db0.couldBeBetter), welfareConcerns: str(db0.welfareConcerns),
