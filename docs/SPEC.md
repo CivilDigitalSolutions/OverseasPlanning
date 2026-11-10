@@ -111,12 +111,15 @@ Requests · Messages · Attachments · Vaccinations · Access · Debrief, plus *
     currency; people/assets add quantity; all have needed-by and details).
   - Workflow: **Awaiting approval → Approved / Rejected → Completed**. **Only the trip's SPC
     approves or rejects** (with a note) — not HOST, not the Team Leader (owner decision
-    2026-11-10; enforced in `firestore.rules` `isSpc`). The SPC, Team Leader or HOST marks an
+    2026-11-10; enforced in `firestore.rules` `isSpc`). The SPC also marks an
     approved request completed (with an outcome).
+  - **Update 2026-11-10: every step is authorised by the SPC only** — approve, reject and mark
+    completed. The person who raised a request may withdraw (delete) it while it awaits approval;
+    after that only the SPC can delete it. HOST and the Team Leader have no request authority.
     The requester may resubmit a rejected request. Each request is listed individually with a
     status badge; the tab shows a count of open items (awaiting approval or approved-not-done).
   - TODO(owner): may the SPC approve their own request? Who approves when the trip has no SPC
-    with an account yet (today: nobody)? Who may mark a request completed? Approval limits for cash? Should an
+    with an account yet (today: nobody)? Approval limits for cash? Should an
     approved flight/hotel/car/asset automatically create the planning item?
 - **Export**: "PDF" on the trip header exports every section (overview, roles, access, flights,
   hotels, cars, assets, requests + decisions, vaccination declarations the exporter may read,

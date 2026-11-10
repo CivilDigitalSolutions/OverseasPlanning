@@ -159,7 +159,20 @@ describe("requests to the Team Leader (approval)", () => {
     await assertSucceeds(updateDoc(doc(member(), "trips", TRIP, "tlRequests", "q1"), { status: "pending", decidedBy: deleteField(), decidedAt: deleteField(), decisionNote: deleteField() }));
     await assertFails(updateDoc(doc(leader(), "trips", TRIP, "tlRequests", "q1"), { status: "approved", decidedBy: "lead", decidedAt: serverTimestamp() }));
     await assertSucceeds(updateDoc(doc(spc(), "trips", TRIP, "tlRequests", "q1"), { status: "approved", decidedBy: "spc", decidedAt: serverTimestamp() }));
-    await assertSucceeds(updateDoc(doc(leader(), "trips", TRIP, "tlRequests", "q1"), complete));
+    await assertFails(updateDoc(doc(leader(), "trips", TRIP, "tlRequests", "q1"), complete));
+    await assertFails(updateDoc(doc(host(), "trips", TRIP, "tlRequests", "q1"), { ...complete, completedBy: "host" }));
+    await assertSucceeds(updateDoc(doc(spc(), "trips", TRIP, "tlRequests", "q1"), { ...complete, completedBy: "spc" }));
+  });
+});
+
+describe("request deletion", () => {
+  it("16b creator withdraws while pending; afterwards only the SPC deletes (not HOST)", async () => {
+    await assertFails(deleteDoc(doc(host(), "trips", TRIP, "tlRequests", "q1")));
+    await assertFails(deleteDoc(doc(leader(), "trips", TRIP, "tlRequests", "q1")));
+    await assertSucceeds(deleteDoc(doc(member(), "trips", TRIP, "tlRequests", "q1")));
+    await env.withSecurityRulesDisabled((ctx) => setDoc(doc(ctx.firestore(), "trips", TRIP, "tlRequests", "q2"), { kind: "cash", title: "x", createdBy: "alice", status: "approved" }));
+    await assertFails(deleteDoc(doc(member(), "trips", TRIP, "tlRequests", "q2")));
+    await assertSucceeds(deleteDoc(doc(spc(), "trips", TRIP, "tlRequests", "q2")));
   });
 });
 

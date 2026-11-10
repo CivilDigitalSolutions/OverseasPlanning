@@ -9,7 +9,8 @@ import type { TripCtx } from "./TripDetail";
 
 /**
  * Requests to the Team Leader, each with an approval process (spec §6):
- * pending → approved / rejected (the trip's SPC only) → completed once fulfilled (SPC, Team Leader or HOST).
+ * Authorised by the trip's SPC only: pending → approved / rejected → completed once fulfilled.
+ * The person who raised a request may withdraw it while it awaits approval.
  */
 const FILTERS: { key: TlRequestStatus | "all"; label: string }[] = [
   { key: "all", label: "All" }, { key: "pending", label: "Awaiting approval" }, { key: "approved", label: "Approved" },
@@ -80,9 +81,9 @@ export function RequestsTab({ ctx, requests }: { ctx: TripCtx; requests: TlReque
                     <button className="btn small" onClick={() => setDeciding({ r, approve: true })}>Approve</button>
                     <button className="btn danger small" onClick={() => setDeciding({ r, approve: false })}>Reject</button>
                   </>}
-                  {(ctx.canLead || ctx.isSpc) && r.status === "approved" && <button className="btn small" onClick={() => setCompleting(r)}><Icon name="check" size={16} /> Mark completed</button>}
+                  {ctx.isSpc && r.status === "approved" && <button className="btn small" onClick={() => setCompleting(r)}><Icon name="check" size={16} /> Mark completed</button>}
                   {mine && r.status === "rejected" && <button className="btn secondary small" onClick={() => resubmitTlRequest(ctx.trip.id, r.id).catch((e) => setErr(errorText(e)))}>Resubmit</button>}
-                  {((mine && r.status === "pending") || ctx.session.isHost) && <button className="btn ghost small" onClick={() => setRemoving(r)}>Delete</button>}
+                  {((mine && r.status === "pending") || ctx.isSpc) && <button className="btn ghost small" onClick={() => setRemoving(r)}>Delete</button>}
                 </div>
               </li>
             );

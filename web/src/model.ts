@@ -334,8 +334,8 @@ export type RequestKind = (typeof REQUEST_KINDS)[number]["key"];
 export const kindLabel = (k: string) => REQUEST_KINDS.find((x) => x.key === k)?.label ?? "Request";
 
 /**
- * pending → approved | rejected (ONLY the trip's SPC decides — owner decision 2026-11-10)
- * → completed once fulfilled (SPC, Team Leader or HOST).
+ * pending → approved | rejected → completed once fulfilled. Every step is authorised by the
+ * trip's SPC ONLY (owner decision 2026-11-10).
  * A rejected request can be resubmitted by its creator (back to pending).
  */
 export type TlRequestStatus = "pending" | "approved" | "rejected" | "completed";

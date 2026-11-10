@@ -141,7 +141,8 @@ service cloud.firestore {
         allow delete: if onTrip(tripId) && (resource.data.uploadedBy == me() || isHost());
       }
 
-      // Requests to the Team Leader, with approval: pending → approved | rejected (SPC only) → completed.
+      // Requests, authorised by the trip's SPC ONLY (owner decision 2026-11-10):
+      // pending → approved | rejected → completed, every step by the SPC.
       match /tlRequests/{id} {
         allow read: if onTrip(tripId);
         allow create: if onTrip(tripId)
@@ -156,15 +157,16 @@ service cloud.firestore {
           (isSpc(tripId) && resource.data.status == 'pending' && d().status in ['approved', 'rejected']
             && changed().hasOnly(['status', 'decidedBy', 'decidedByName', 'decidedAt', 'decisionNote'])
             && d().decidedBy == me() && d().decidedAt == request.time && optStr(d(), 'decisionNote', 1000) && optStr(d(), 'decidedByName', 80))
-          // Complete an approved request (SPC, Team Leader or HOST)
-          || ((isSpc(tripId) || isLead(tripId)) && resource.data.status == 'approved' && d().status == 'completed'
+          // Complete an approved request: the trip's SPC only
+          || (isSpc(tripId) && resource.data.status == 'approved' && d().status == 'completed'
             && changed().hasOnly(['status', 'completedBy', 'completedByName', 'completedAt', 'response'])
             && d().completedBy == me() && d().completedAt == request.time && optStr(d(), 'response', 1000) && optStr(d(), 'completedByName', 80))
           // The creator resubmits a rejected request (decision fields removed)
           || (onTrip(tripId) && resource.data.createdBy == me() && resource.data.status == 'rejected' && d().status == 'pending'
             && changed().hasOnly(['status', 'decidedBy', 'decidedByName', 'decidedAt', 'decisionNote'])
             && !d().keys().hasAny(['decidedBy', 'decidedByName', 'decidedAt', 'decisionNote']));
-        allow delete: if (onTrip(tripId) && resource.data.createdBy == me() && resource.data.status == 'pending') || isHost();
+        // The creator may withdraw their own request while it awaits approval; otherwise the SPC only.
+        allow delete: if (onTrip(tripId) && resource.data.createdBy == me() && resource.data.status == 'pending') || isSpc(tripId);
       }
 
       // Vaccination declarations (health data): your own, plus the Team Leader and HOST read all.

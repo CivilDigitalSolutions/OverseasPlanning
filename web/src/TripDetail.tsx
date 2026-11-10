@@ -17,10 +17,10 @@ import { VaccinationsTab } from "./VaccinationsTab";
 export interface TripCtx {
   session: Session;
   trip: Trip;
-  /** HOST, or this trip's Team Leader: moves status, reads all declarations, completes requests. */
+  /** HOST, or this trip's Team Leader: moves status, reads all declarations. */
   canLead: boolean;
   isTeamLeader: boolean;
-  /** Only the trip's SPC approves or rejects requests (owner decision 2026-11-10). */
+  /** Only the trip's SPC authorises requests: approve, reject, complete (owner decision 2026-11-10). */
   isSpc: boolean;
 }
 
