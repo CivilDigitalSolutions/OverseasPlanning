@@ -56,6 +56,13 @@ A mobile-first, installable web app (PWA) to request, plan, run and debrief over
    appears when the dates say it should move; it is never changed automatically.
 4. Lists: **Planning**, **Live trips**, **Archived**. Planning and Archived are the same view;
    Archived adds a search (every word must match: name, team, location, dates, risk, role holders).
+5. **Live trips** (owner, 2026-11-10) is a date window, not a status: every trip that is **not
+   archived** and **starts within the next 10 days or has already started** (so trips under way,
+   or finished but not formally closed by archiving, stay listed), plus any trip marked Live.
+   Each row shows where the trip is ("Starts in 3 days", "Day 2 of 5", "Ended 4 days ago — not
+   archived"). Opening one shows **only the basic details** (location, dates, team, role holders,
+   risk levels) **and the team messages**; planning is done from the full trip screen.
+   A trip can therefore appear in both Planning and Live trips while it is close to departure.
 
 Access: the requester, every role holder with a confirmed account, and anyone added through
 **Access** see the trip. HOST sees every trip.

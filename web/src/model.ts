@@ -142,6 +142,42 @@ export function tripsFor(trips: Trip[], status: TripStatus, q = ""): Trip[] {
   );
 }
 
+// ---- Live trips (owner, 2026-11-10) ------------------------------------------------------------------
+
+/** How far ahead a trip counts as live. */
+export const LIVE_WINDOW_DAYS = 10;
+
+/** yyyy-mm-dd + n days (calendar arithmetic in UTC, so no daylight-saving drift). */
+export function addDaysIso(iso: string, n: number): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
+}
+
+/**
+ * Live trips: every trip NOT archived that starts within the next 10 days or has already started
+ * (so trips under way, or over but not formally closed by archiving, stay here), plus any trip
+ * already marked Live. Soonest first.
+ */
+export function liveTrips(trips: Trip[], today: string): Trip[] {
+  const horizon = addDaysIso(today, LIVE_WINDOW_DAYS);
+  return trips
+    .filter((t) => t.status !== "archived" && (t.status === "live" || (isIsoDate(t.startDate) && t.startDate <= horizon)))
+    .sort((a, b) => a.startDate.localeCompare(b.startDate));
+}
+
+const daysBetween = (a: string, b: string) => Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86400000);
+
+/** Where a live trip is: "Starts in 3 days", "Day 2 of 5", "Ended 4 days ago — not archived". */
+export function tripPhase(t: Trip, today: string): { label: string; tone: "info" | "ok" | "warn" } {
+  if (!isIsoDate(t.startDate)) return { label: "No dates", tone: "warn" };
+  const toStart = daysBetween(today, t.startDate);
+  if (toStart > 0) return { label: toStart === 1 ? "Starts tomorrow" : `Starts in ${toStart} days`, tone: "info" };
+  const end = isIsoDate(t.endDate) ? t.endDate : t.startDate;
+  if (today <= end) return { label: `Day ${daysBetween(t.startDate, today) + 1} of ${daysBetween(t.startDate, end) + 1}`, tone: "ok" };
+  const ago = daysBetween(end, today);
+  return { label: `Ended ${ago === 1 ? "yesterday" : `${ago} days ago`} — not archived`, tone: "warn" };
+}
+
 /** A hint shown to HOST when the dates say a trip should move on (status is never changed automatically). */
 export function statusHint(t: Trip, todayIso: string): string | null {
   if (t.status === "planning" && t.startDate && todayIso >= t.startDate) return "The departure date has arrived — mark this trip Live?";

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Badge, Empty, Link, Loading } from "./components";
-import { dateRange, riskTone, tripsFor, type TripStatus } from "./model";
+import { dateRange, liveTrips, riskTone, todayIso, tripPhase, tripsFor, type TripStatus } from "./model";
 import { useTrips, type Session } from "./store";
 
 const TITLES: Record<TripStatus, string> = { planning: "Planning", live: "Live trips", archived: "Archived trips" };
@@ -13,7 +13,10 @@ export function TripList({ session, status }: { session: Session; status: TripSt
   const trips = useTrips(session);
   const [q, setQ] = useState("");
   const searchable = status === "archived";
-  const list = trips ? tripsFor(trips, status, searchable ? q : "") : null;
+  // Live trips is a date window, not a status: not archived and starting within 10 days or already started.
+  const live = status === "live";
+  const today = todayIso();
+  const list = trips ? (live ? liveTrips(trips, today) : tripsFor(trips, status, searchable ? q : "")) : null;
 
   return (
     <>
@@ -32,12 +35,13 @@ export function TripList({ session, status }: { session: Session; status: TripSt
         <ul className="list">
           {list.map((t) => (
             <li key={t.id}>
-              <Link to={`/trips/${t.id}`} className="list-item">
+              <Link to={live ? `/live/${t.id}` : `/trips/${t.id}`} className="list-item">
                 <span className="grow">
                   <span className="title">{t.name || t.teamName}</span>
                   <span className="muted small" style={{ display: "block" }}>{t.location} · {dateRange(t.startDate, t.endDate)}</span>
                 </span>
                 <span className="stack" style={{ gap: 4, justifyItems: "end" }}>
+                  {live && (() => { const ph = tripPhase(t, today); return <Badge tone={ph.tone}>{ph.label}</Badge>; })()}
                   {t.cyberRisk && <Badge tone={riskTone(t.cyberRisk)}>Cyber {t.cyberRisk}</Badge>}
                   {t.countryRisk && <Badge tone={riskTone(t.countryRisk)}>Country {t.countryRisk}</Badge>}
                 </span>

@@ -6,6 +6,7 @@ import { AuthAction, ForgotPassword, SignIn, SignUp, VerifyEmail } from "./Auth"
 import { Icon, Link, Loading, usePath } from "./components";
 import { auth } from "./firebase";
 import { InstallPrompt } from "./InstallPrompt";
+import { LiveTrip } from "./LiveTrip";
 import { Privacy, Terms } from "./Legal";
 import { CreateTrip, NewRequest, RequestsPage } from "./Requests";
 import { TripDetail } from "./TripDetail";
@@ -44,6 +45,7 @@ function Shell({ session, pathname }: { session: Session; pathname: string }) {
   const seg = pathname.split("/").filter(Boolean);
   let page;
   if (seg[0] === "trips" && seg[1]) page = <TripDetail session={session} tripId={seg[1]} tab={seg[2] ?? "overview"} />;
+  else if (seg[0] === "live" && seg[1]) page = <LiveTrip session={session} tripId={seg[1]} />;
   else if (seg[0] === "live") page = <TripList session={session} status="live" />;
   else if (seg[0] === "archived") page = <TripList session={session} status="archived" />;
   else if (seg[0] === "requests" && seg[1] === "new") page = <NewRequest session={session} />;

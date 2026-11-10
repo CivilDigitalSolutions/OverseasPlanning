@@ -167,3 +167,28 @@ test("display: text is shown exactly; only date-times lose their T", () => {
   assert.equal(displayValue(fn, { flightNumber: "TP1351" }), "TP1351");
   assert.equal(displayValue(dep, { departAt: "2026-12-01T21:10" }), "2026-12-01 21:10");
 });
+
+import { addDaysIso, liveTrips, tripPhase } from "../src/model.ts";
+
+test("live trips: not archived and starting within 10 days or already started, plus status Live", () => {
+  const today = "2026-11-10";
+  const list = [
+    trip({ id: "soon", startDate: "2026-11-20", endDate: "2026-11-25" }),      // day 10: in
+    trip({ id: "later", startDate: "2026-11-21", endDate: "2026-11-25" }),     // day 11: out
+    trip({ id: "now", startDate: "2026-11-08", endDate: "2026-11-12" }),       // under way
+    trip({ id: "over", startDate: "2026-10-01", endDate: "2026-10-05" }),      // ended, not archived: in
+    trip({ id: "closed", startDate: "2026-11-09", endDate: "2026-11-12", status: "archived" }),
+    trip({ id: "marked", startDate: "2027-01-01", endDate: "2027-01-05", status: "live" }),
+  ];
+  assert.deepEqual(liveTrips(list, today).map((t) => t.id), ["over", "now", "soon", "marked"]);
+  assert.equal(addDaysIso("2026-12-28", 10), "2027-01-07");
+});
+
+test("trip phase labels", () => {
+  const t = trip({ startDate: "2026-11-12", endDate: "2026-11-14" });
+  assert.equal(tripPhase(t, "2026-11-10").label, "Starts in 2 days");
+  assert.equal(tripPhase(t, "2026-11-11").label, "Starts tomorrow");
+  assert.equal(tripPhase(t, "2026-11-13").label, "Day 2 of 3");
+  assert.equal(tripPhase(t, "2026-11-15").label, "Ended yesterday — not archived");
+  assert.equal(tripPhase(t, "2026-11-18").tone, "warn");
+});
