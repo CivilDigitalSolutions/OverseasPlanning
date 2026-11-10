@@ -370,7 +370,7 @@ export const deleteTlRequest = (tripId: string, id: string) => deleteDoc(doc(db,
 export type SummaryRole = "teamLeader" | "spc";
 export interface Summary { text: string; byName: string; updatedAtMs: number }
 
-/** trips/{id}/summaries/{teamLeader|spc}: written only by that role holder (rules). */
+/** trips/{id}/summaries/{teamLeader|spc}: written by anyone on the trip, stamped with the writer (owner, 2026-11-10). */
 export function useSummaries(tripId: string): Record<SummaryRole, Summary | null> | null {
   const [m, setM] = useState<Record<SummaryRole, Summary | null> | null>(null);
   useEffect(() => onSnapshot(collection(db, "trips", tripId, "summaries"), (snap) => {

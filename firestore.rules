@@ -209,10 +209,11 @@ service cloud.firestore {
         allow delete: if (onTrip(tripId) && resource.data.createdBy == me() && resource.data.status == 'pending') || isSpc(tripId);
       }
 
-      // Requests: Team Leader summary and SPC summary, each written only by that role holder.
+      // Requests: Team Leader summary and SPC summary — editable by anyone on the trip (owner,
+      // 2026-11-10), each save stamped with who wrote it.
       match /summaries/{role} {
         allow read: if onTrip(tripId);
-        allow write: if ((role == 'teamLeader' && verified() && leaderUidOf(trip(tripId)) == me()) || (role == 'spc' && isSpc(tripId)))
+        allow write: if role in ['teamLeader', 'spc'] && onTrip(tripId)
           && d().keys().hasOnly(['text', 'byUid', 'byName', 'updatedAt'])
           && optStr(d(), 'text', 5000) && optStr(d(), 'byName', 80) && d().byUid == me() && d().updatedAt == request.time;
       }

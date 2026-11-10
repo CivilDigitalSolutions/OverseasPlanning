@@ -231,12 +231,12 @@ describe("flights: new fields and SPC approval", () => {
 
 describe("request summaries and taxi", () => {
   const sum = (uid) => ({ text: "All good.", byUid: uid, byName: "X", updatedAt: serverTimestamp() });
-  it("S1 Team Leader writes the TL summary; SPC writes the SPC summary; nobody else", async () => {
-    await assertSucceeds(setDoc(doc(leader(), "trips", TRIP, "summaries", "teamLeader"), sum("lead")));
-    await assertFails(setDoc(doc(spc(), "trips", TRIP, "summaries", "teamLeader"), sum("spc")));
-    await assertSucceeds(setDoc(doc(spc(), "trips", TRIP, "summaries", "spc"), sum("spc")));
-    await assertFails(setDoc(doc(leader(), "trips", TRIP, "summaries", "spc"), sum("lead")));
-    await assertFails(setDoc(doc(host(), "trips", TRIP, "summaries", "spc"), sum("host")));
+  it("S1 anyone on the trip edits both summaries, stamped as themselves; outsiders cannot", async () => {
+    await assertSucceeds(setDoc(doc(member(), "trips", TRIP, "summaries", "teamLeader"), sum("alice")));
+    await assertSucceeds(setDoc(doc(member(), "trips", TRIP, "summaries", "spc"), sum("alice")));
+    await assertSucceeds(setDoc(doc(host(), "trips", TRIP, "summaries", "spc"), sum("host")));
+    await assertFails(setDoc(doc(member(), "trips", TRIP, "summaries", "spc"), sum("lead")));
+    await assertFails(setDoc(doc(as("bob"), "trips", TRIP, "summaries", "spc"), sum("bob")));
     await assertFails(setDoc(doc(member(), "trips", TRIP, "summaries", "other"), sum("alice")));
     await assertSucceeds(getDoc(doc(member(), "trips", TRIP, "summaries", "spc")));
     await assertFails(getDoc(doc(outsider(), "trips", TRIP, "summaries", "spc")));

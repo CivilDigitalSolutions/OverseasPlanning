@@ -37,8 +37,8 @@ export function RequestsTab({ ctx, requests }: { ctx: TripCtx; requests: TlReque
         <button className="btn small" onClick={() => setAdding(true)}><Icon name="plus" size={16} /> New request</button>
       </div>
       <div className="grid2" style={{ marginBottom: 14 }}>
-        <SummaryBox ctx={ctx} role="teamLeader" title="Team Leader summary" canEdit={ctx.isTeamLeader} summary={summaries?.teamLeader ?? null} />
-        <SummaryBox ctx={ctx} role="spc" title="SPC summary" canEdit={ctx.isSpc} summary={summaries?.spc ?? null} />
+        <SummaryBox ctx={ctx} role="teamLeader" title="Team Leader summary" canEdit summary={summaries?.teamLeader ?? null} />
+        <SummaryBox ctx={ctx} role="spc" title="SPC summary" canEdit summary={summaries?.spc ?? null} />
       </div>
       <div className="tabs" role="tablist" aria-label="Status">
         {FILTERS.map((f) => (
@@ -103,7 +103,7 @@ export function RequestsTab({ ctx, requests }: { ctx: TripCtx; requests: TlReque
   );
 }
 
-/** Free-text summary kept by one role holder (Team Leader or SPC); read-only for everyone else. */
+/** Free-text summary (Team Leader / SPC), editable by anyone on the trip; shows who saved it last. */
 function SummaryBox({ ctx, role, title, canEdit, summary }: { ctx: TripCtx; role: SummaryRole; title: string; canEdit: boolean; summary: Summary | null }) {
   const [text, setText] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ tone: "ok" | "bad"; text: string } | null>(null);

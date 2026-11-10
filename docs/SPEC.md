@@ -141,8 +141,8 @@ Assets · Messages · Attachments · Vaccinations · Contacts · Access · Debri
   - Types: **Resource (people), Flight, Hotel, Hire car, Taxi, Asset, Cash** (cash adds amount +
     currency; people/assets add quantity; all have needed-by and a free-text **Rationale**,
     which replaces the earlier "Details" box — confirmed by the owner 2026-11-10).
-  - At the top of the Requests tab: a **Team Leader summary** (written only by the Team Leader) and
-    an **SPC summary** (written only by the SPC), free text, read by everyone on the trip
+  - At the top of the Requests tab: a **Team Leader summary** and an **SPC summary**, free text,
+    **editable by anyone on the trip** (owner, 2026-11-10), each showing who saved it last and when
     (`trips/{id}/summaries/{teamLeader|spc}`).
   - Workflow: **Awaiting approval → Approved / Rejected → Completed**. **Only the trip's SPC
     approves or rejects** (with a note) — not HOST, not the Team Leader (owner decision
