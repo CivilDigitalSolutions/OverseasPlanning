@@ -1,6 +1,6 @@
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { FieldValue, getFirestore } from "firebase-admin/firestore";
-import { assertHost } from "./lib/auth";
+import { assertHost, assertTripAccess, assertVerified } from "./lib/auth";
 import { verifiedUidFor, writeMember } from "./lib/access";
 import { cleanRisk, cleanRoles, cleanText, isDocId, type RoleKey } from "./lib/validate";
 
@@ -60,12 +60,16 @@ export const createTrip = onCall(async (req) => {
   return { tripId: tripRef.id };
 });
 
-/** HOST changes the role holders. New holders gain access; nobody loses access here (use removeTripAccess). */
+/**
+ * Anyone on the trip changes the role holders (owner decision 2026-11-10). New holders gain access;
+ * nobody loses access here (HOST uses removeTripAccess).
+ */
 export const updateTripRoles = onCall(async (req) => {
-  const { uid } = assertHost(req);
+  const { uid } = assertVerified(req);
   const hostName = cleanText(req.auth?.token.name, 80) || cleanText(req.auth?.token.email, 80);
   const tripId = req.data?.tripId;
   if (!isDocId(tripId)) throw new HttpsError("invalid-argument", "Unknown trip.");
+  await assertTripAccess(req, tripId);
   const { roles, error } = cleanRoles(req.data?.roles);
   if (error) throw new HttpsError("invalid-argument", error);
   const resolved: Partial<Record<RoleKey, { name: string; email: string; uid: string | null }>> = {};
@@ -85,7 +89,10 @@ export const updateTripRoles = onCall(async (req) => {
       if (h.uid && !memberUids.has(h.uid)) { memberUids.add(h.uid); writeMember(tx, tripRef, h.uid, h.name, h.email, { uid, name: hostName }); }
       else if (!h.uid && h.email) pending.add(h.email);
     }
-    tx.update(tripRef, { roles: resolved, memberUids: [...memberUids], pendingEmails: [...pending], updatedAt: FieldValue.serverTimestamp() });
+    tx.update(tripRef, {
+      roles: resolved, memberUids: [...memberUids], pendingEmails: [...pending],
+      updatedAt: FieldValue.serverTimestamp(), updatedBy: uid, updatedByName: hostName,
+    });
   });
   return { ok: true };
 });

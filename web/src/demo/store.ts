@@ -178,6 +178,7 @@ const toTrip = (s: Snap): Trip => {
     roles, memberUids: Array.isArray(v.memberUids) ? v.memberUids as string[] : [], pendingEmails: Array.isArray(v.pendingEmails) ? v.pendingEmails as string[] : [],
     requestId: typeof v.requestId === "string" ? v.requestId : null, createdByName: str(v.createdByName), createdByEmail: str(v.createdByEmail),
     dipAgreed: v.dipAgreed === true, dipAgreedDate: str(v.dipAgreedDate), dipClassification: str(v.dipClassification),
+    updatedByName: str(v.updatedByName), updatedAtMs: ms(v.updatedAt),
     createdAtMs: ms(v.createdAt),
   };
 };
@@ -191,11 +192,15 @@ export interface MemberProfile { uid: string; name: string; email: string; added
 const toMember = (s: Snap): MemberProfile => ({ uid: s.id, name: str(s.data.name), email: str(s.data.email), addedByName: str(s.data.addedByName), addedAtMs: ms(s.data.addedAt) });
 export const useMembers = (tripId: string) => useColl(`trips/${tripId}/members`, {}, toMember, tripId);
 
-export const updateTripOverview = (id: string, patch: Record<string, unknown>) => be().patch(`trips/${id}`, { ...patch, updatedAt: now() });
-export const setTripStatus = (id: string, status: TripStatus) => be().patch(`trips/${id}`, { status, updatedAt: now() });
-export const setDipClassification = (id: string, value: string) => be().patch(`trips/${id}`, { dipClassification: value, updatedAt: now() });
-export const setDipAgreed = (id: string, agreed: boolean, date: string) =>
-  be().patch(`trips/${id}`, { dipAgreed: agreed, dipAgreedDate: agreed ? date : "", updatedAt: now() });
+async function editStamp() {
+  const me = toAccount(await be().get(accountPath()));
+  return { updatedAt: now(), updatedBy: be().uid, updatedByName: (me?.name || me?.email || "").slice(0, 80) };
+}
+export const updateTripOverview = async (id: string, patch: Record<string, unknown>) => be().patch(`trips/${id}`, { ...patch, ...(await editStamp()) });
+export const setTripStatus = async (id: string, status: TripStatus) => be().patch(`trips/${id}`, { status, ...(await editStamp()) });
+export const setDipClassification = async (id: string, value: string) => be().patch(`trips/${id}`, { dipClassification: value, ...(await editStamp()) });
+export const setDipAgreed = async (id: string, agreed: boolean, date: string) =>
+  be().patch(`trips/${id}`, { dipAgreed: agreed, dipAgreedDate: agreed ? date : "", ...(await editStamp()) });
 
 export async function updateTripRoles(tripId: string, roles: Partial<Record<TripRoleKey, RoleHolder>>) {
   const t = await be().get(`trips/${tripId}`);
@@ -208,7 +213,7 @@ export async function updateTripRoles(tripId: string, roles: Partial<Record<Trip
     if (h.uid && !memberUids.has(h.uid)) { memberUids.add(h.uid); await be().set(`trips/${tripId}/members/${h.uid}`, { name: h.name, email: h.email, addedByName: "HOST", addedAt: now() }); }
     else if (!h.uid && h.email) pending.add(h.email);
   }
-  await be().patch(`trips/${tripId}`, { roles: resolved, memberUids: [...memberUids], pendingEmails: [...pending], updatedAt: now() });
+  await be().patch(`trips/${tripId}`, { roles: resolved, memberUids: [...memberUids], pendingEmails: [...pending], ...(await editStamp()) });
 }
 
 export async function addTripAccess(tripId: string, email: string, name: string): Promise<{ status: "added" | "pending" | "already" }> {

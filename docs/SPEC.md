@@ -37,12 +37,18 @@ A mobile-first, installable web app (PWA) to request, plan, run and debrief over
    shown to the requester) or **creates the trip** on one screen:
    - Cyber risk (drop-down) + rationale; Country risk (drop-down) + rationale.
    - Basic roles: **Team Leader, Office Manager, SPC, Intel Worker** (name + email each).
+   - **Everyone on the trip edits the Overview** (owner, 2026-11-10): risk levels and rationales,
+     roles (incl. HOST assessment name/email), trip name, team, location, dates, DiP classification
+     and DiP Agreed — each section has its own Edit button. Every edit is stamped with who made it
+     and when (`updatedBy`, `updatedByName`, `updatedAt`; rules require `updatedBy` = the editor) and
+     shown as "Last edited by …". Moving the trip between Planning/Live/Archived stays with HOST and
+     the Team Leader. Roles still change through `updateTripRoles` (now open to anyone on the trip)
+     because it grants access to the people named.
    - **DiP classification** (owner, 2026-11-10): a drop-down — **PSA, CP, Reece, Event** (or not
-     set) — in the Overview's Trip section and the PDF; same editors as DiP Agreed
+     set) — in the Overview's Trip section and the PDF; editable by anyone on the trip
      (`trips.dipClassification`, values checked in rules `validDip`).
    - **DiP Agreed** (owner, 2026-11-10): a checkbox and the date the DiP was agreed, in the
-     Overview's Trip section and the PDF. HOST or the trip's Team Leader sets it (provisional —
-     TODO(owner): confirm who may); an agreed DiP must carry a date (`trips.dipAgreed`,
+     Overview's Trip section and the PDF. Anyone on the trip sets it; an agreed DiP must carry a date (`trips.dipAgreed`,
      `trips.dipAgreedDate`, rules `validDip`).
    - The trip records the HOST member who created it (`createdByName`, `createdByEmail`), shown on
      the Overview's **Roles** section as "HOST assessment" (first row) and in the PDF's Roles table.

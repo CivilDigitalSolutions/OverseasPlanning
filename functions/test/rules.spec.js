@@ -90,28 +90,40 @@ describe("trips", () => {
     await assertFails(updateDoc(doc(host(), "trips", TRIP), { memberUids: ["alice", "eve"], updatedAt: serverTimestamp() }));
     await assertFails(updateDoc(doc(member(), "trips", TRIP), { memberUids: ["alice", "lead", "eve"], updatedAt: serverTimestamp() }));
   });
-  it("9 HOST edits risk; a member cannot; the Team Leader may only move status", async () => {
-    await assertSucceeds(updateDoc(doc(host(), "trips", TRIP), { cyberRisk: "High", updatedAt: serverTimestamp() }));
-    await assertFails(updateDoc(doc(host(), "trips", TRIP), { cyberRisk: "Extreme", updatedAt: serverTimestamp() }));
-    await assertFails(updateDoc(doc(member(), "trips", TRIP), { status: "live", updatedAt: serverTimestamp() }));
-    await assertSucceeds(updateDoc(doc(leader(), "trips", TRIP), { status: "live", updatedAt: serverTimestamp() }));
-    await assertFails(updateDoc(doc(leader(), "trips", TRIP), { cyberRisk: "Low", updatedAt: serverTimestamp() }));
+  // Every client edit carries the editor's uid (rules: updatedBy == caller).
+  const ed = (uid, o) => ({ ...o, updatedAt: serverTimestamp(), updatedBy: uid, updatedByName: uid });
+  it("9 anyone on the trip edits overview fields; outsiders cannot; status is HOST or Team Leader only", async () => {
+    await assertSucceeds(updateDoc(doc(member(), "trips", TRIP), ed("alice", { cyberRisk: "High", cyberRationale: "Changed", teamName: "Team B", location: "Porto", name: "Porto trip" })));
+    await assertSucceeds(updateDoc(doc(member(), "trips", TRIP), ed("alice", { startDate: "2026-05-02", endDate: "2026-05-09" })));
+    await assertSucceeds(updateDoc(doc(member(), "trips", TRIP), ed("alice", { createdByName: "Hana Host", createdByEmail: "hana@x.com" })));
+    await assertFails(updateDoc(doc(member(), "trips", TRIP), ed("alice", { endDate: "2026-04-01" })));
+    await assertFails(updateDoc(doc(member(), "trips", TRIP), ed("alice", { cyberRisk: "Extreme" })));
+    await assertFails(updateDoc(doc(member(), "trips", TRIP), ed("alice", { teamName: "" })));
+    await assertFails(updateDoc(doc(outsider(), "trips", TRIP), ed("eve", { cyberRisk: "Low" })));
+    await assertFails(updateDoc(doc(as("bob"), "trips", TRIP), ed("bob", { cyberRisk: "Low" })));
+    await assertFails(updateDoc(doc(member(), "trips", TRIP), ed("alice", { status: "live" })));
+    await assertSucceeds(updateDoc(doc(leader(), "trips", TRIP), ed("lead", { status: "live" })));
+    await assertSucceeds(updateDoc(doc(host(), "trips", TRIP), ed("host", { status: "planning" })));
   });
-  it("9b DiP Agreed: HOST or Team Leader, with a date; members cannot", async () => {
-    await assertSucceeds(updateDoc(doc(leader(), "trips", TRIP), { dipAgreed: true, dipAgreedDate: "2026-11-10", updatedAt: serverTimestamp() }));
-    await assertFails(updateDoc(doc(host(), "trips", TRIP), { dipAgreed: true, dipAgreedDate: "", updatedAt: serverTimestamp() }));
-    await assertFails(updateDoc(doc(host(), "trips", TRIP), { dipAgreed: false, dipAgreedDate: "2026-11-10", updatedAt: serverTimestamp() }));
-    await assertSucceeds(updateDoc(doc(host(), "trips", TRIP), { dipAgreed: false, dipAgreedDate: "", updatedAt: serverTimestamp() }));
-    await assertFails(updateDoc(doc(member(), "trips", TRIP), { dipAgreed: true, dipAgreedDate: "2026-11-10", updatedAt: serverTimestamp() }));
-    await assertFails(updateDoc(doc(as("bob"), "trips", TRIP), { dipAgreed: true, dipAgreedDate: "2026-11-10", updatedAt: serverTimestamp() }));
+  it("9a every edit is stamped with the editor; roles and access stay functions-only", async () => {
+    await assertFails(updateDoc(doc(member(), "trips", TRIP), { cyberRisk: "Low", updatedAt: serverTimestamp() }));
+    await assertFails(updateDoc(doc(member(), "trips", TRIP), ed("lead", { cyberRisk: "Low" })));
+    await assertFails(updateDoc(doc(member(), "trips", TRIP), ed("alice", { roles: {} })));
+    await assertFails(updateDoc(doc(member(), "trips", TRIP), ed("alice", { memberUids: ["alice", "lead", "spc", "eve"] })));
   });
-  it("9c DiP classification: listed values only; HOST or Team Leader", async () => {
-    await assertSucceeds(updateDoc(doc(leader(), "trips", TRIP), { dipClassification: "PSA", updatedAt: serverTimestamp() }));
-    await assertSucceeds(updateDoc(doc(host(), "trips", TRIP), { dipClassification: "Event", updatedAt: serverTimestamp() }));
-    await assertSucceeds(updateDoc(doc(host(), "trips", TRIP), { dipClassification: "", updatedAt: serverTimestamp() }));
-    await assertFails(updateDoc(doc(host(), "trips", TRIP), { dipClassification: "Secret", updatedAt: serverTimestamp() }));
-    await assertFails(updateDoc(doc(member(), "trips", TRIP), { dipClassification: "CP", updatedAt: serverTimestamp() }));
-    await assertFails(updateDoc(doc(as("bob"), "trips", TRIP), { dipClassification: "CP", updatedAt: serverTimestamp() }));
+  it("9b DiP Agreed: anyone on the trip, an agreed DiP needs a date", async () => {
+    await assertSucceeds(updateDoc(doc(member(), "trips", TRIP), ed("alice", { dipAgreed: true, dipAgreedDate: "2026-11-10" })));
+    await assertFails(updateDoc(doc(member(), "trips", TRIP), ed("alice", { dipAgreed: true, dipAgreedDate: "" })));
+    await assertFails(updateDoc(doc(member(), "trips", TRIP), ed("alice", { dipAgreed: false, dipAgreedDate: "2026-11-10" })));
+    await assertSucceeds(updateDoc(doc(host(), "trips", TRIP), ed("host", { dipAgreed: false, dipAgreedDate: "" })));
+    await assertFails(updateDoc(doc(as("bob"), "trips", TRIP), ed("bob", { dipAgreed: true, dipAgreedDate: "2026-11-10" })));
+  });
+  it("9c DiP classification: listed values only; anyone on the trip", async () => {
+    await assertSucceeds(updateDoc(doc(member(), "trips", TRIP), ed("alice", { dipClassification: "PSA" })));
+    await assertSucceeds(updateDoc(doc(leader(), "trips", TRIP), ed("lead", { dipClassification: "Event" })));
+    await assertSucceeds(updateDoc(doc(host(), "trips", TRIP), ed("host", { dipClassification: "" })));
+    await assertFails(updateDoc(doc(member(), "trips", TRIP), ed("alice", { dipClassification: "Secret" })));
+    await assertFails(updateDoc(doc(as("bob"), "trips", TRIP), ed("bob", { dipClassification: "CP" })));
   });
   it("10 members subcollection is read-only", async () => {
     await assertSucceeds(getDocs(collection(member(), "trips", TRIP, "members")));

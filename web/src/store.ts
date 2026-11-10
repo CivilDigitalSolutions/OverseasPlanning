@@ -136,6 +136,7 @@ const toTrip = (d: DocumentSnapshot): Trip => {
     roles, memberUids: Array.isArray(v.memberUids) ? v.memberUids : [], pendingEmails: Array.isArray(v.pendingEmails) ? v.pendingEmails : [],
     requestId: typeof v.requestId === "string" ? v.requestId : null, createdByName: str(v.createdByName), createdByEmail: str(v.createdByEmail),
     dipAgreed: v.dipAgreed === true, dipAgreedDate: str(v.dipAgreedDate), dipClassification: str(v.dipClassification),
+    updatedByName: str(v.updatedByName), updatedAtMs: ms(v.updatedAt),
     createdAtMs: ms(v.createdAt),
   };
 };
@@ -169,19 +170,26 @@ export function useMembers(tripId: string): MemberProfile[] | null {
   return list;
 }
 
-/** HOST edits the overview (risks, name, dates, location). Rules limit the keys. */
-export const updateTripOverview = (id: string, patch: Partial<Pick<Trip, "name" | "location" | "startDate" | "endDate" | "cyberRisk" | "cyberRationale" | "countryRisk" | "countryRationale">>) =>
-  updateDoc(doc(db, "trips", id), { ...patch, updatedAt: serverTimestamp() });
+/** Every client edit of a trip is stamped with who made it (rules require updatedBy == the caller). */
+const editStamp = () => ({
+  updatedAt: serverTimestamp(), updatedBy: auth.currentUser?.uid ?? "",
+  updatedByName: (auth.currentUser?.displayName || auth.currentUser?.email || "").slice(0, 80),
+});
 
-export const setTripStatus = (id: string, status: TripStatus) => updateDoc(doc(db, "trips", id), { status, updatedAt: serverTimestamp() });
+/** Anyone on the trip edits the overview (owner decision 2026-11-10). Rules limit the keys. */
+export const updateTripOverview = (id: string, patch: Partial<Pick<Trip, "name" | "teamName" | "location" | "startDate" | "endDate" | "cyberRisk" | "cyberRationale" | "countryRisk" | "countryRationale" | "createdByName" | "createdByEmail">>) =>
+  updateDoc(doc(db, "trips", id), { ...patch, ...editStamp() });
 
-/** HOST or the Team Leader sets the DiP classification ("" clears it). */
+/** HOST or the Team Leader moves the trip between Planning / Live / Archived. */
+export const setTripStatus = (id: string, status: TripStatus) => updateDoc(doc(db, "trips", id), { status, ...editStamp() });
+
+/** Anyone on the trip sets the DiP classification ("" clears it). */
 export const setDipClassification = (id: string, value: string) =>
-  updateDoc(doc(db, "trips", id), { dipClassification: value, updatedAt: serverTimestamp() });
+  updateDoc(doc(db, "trips", id), { dipClassification: value, ...editStamp() });
 
-/** HOST or the Team Leader records the DiP agreement (an agreed DiP always carries its date). */
+/** Anyone on the trip records the DiP agreement (an agreed DiP always carries its date). */
 export const setDipAgreed = (id: string, agreed: boolean, date: string) =>
-  updateDoc(doc(db, "trips", id), { dipAgreed: agreed, dipAgreedDate: agreed ? date : "", updatedAt: serverTimestamp() });
+  updateDoc(doc(db, "trips", id), { dipAgreed: agreed, dipAgreedDate: agreed ? date : "", ...editStamp() });
 
 export const updateTripRoles = (tripId: string, roles: Partial<Record<TripRoleKey, RoleHolder>>) => call("updateTripRoles", { tripId, roles });
 

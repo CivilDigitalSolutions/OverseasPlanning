@@ -81,15 +81,27 @@ service cloud.firestore {
       }
       allow read: if isHost() || (verified() && me() in resource.data.memberUids);
       allow create, delete: if false; // createTrip only
-      allow update: if d().updatedAt == request.time && d().status in ['planning', 'live', 'archived'] && validDip(d()) && (
-        // HOST edits the overview. Roles / memberUids / pendingEmails are functions-only.
-        (isHost() && changed().hasOnly(['name', 'location', 'startDate', 'endDate', 'cyberRisk', 'cyberRationale', 'countryRisk', 'countryRationale', 'status', 'dipClassification', 'dipAgreed', 'dipAgreedDate', 'updatedAt'])
-          && reqStr(d(), 'name', 120) && reqStr(d(), 'location', 120) && isoDate(d().startDate) && isoDate(d().endDate)
-          && d().endDate >= d().startDate
-          && d().cyberRisk in ['Low', 'Medium', 'High', 'Critical'] && d().countryRisk in ['Low', 'Medium', 'High', 'Critical']
-          && optStr(d(), 'cyberRationale', 2000) && optStr(d(), 'countryRationale', 2000))
-        // The Team Leader moves the trip between Planning / Live / Archived and records the DiP fields.
-        || (verified() && leaderUidOf(resource.data) == me() && changed().hasOnly(['status', 'dipClassification', 'dipAgreed', 'dipAgreedDate', 'updatedAt'])));
+      /** Overview fields anyone on the trip may edit (owner decision 2026-11-10). Roles, memberUids and
+       *  pendingEmails stay functions-only (updateTripRoles / addTripAccess). */
+      function overviewKeys() {
+        return ['name', 'teamName', 'location', 'startDate', 'endDate', 'cyberRisk', 'cyberRationale', 'countryRisk', 'countryRationale',
+                'dipClassification', 'dipAgreed', 'dipAgreedDate', 'createdByName', 'createdByEmail', 'updatedAt', 'updatedBy', 'updatedByName'];
+      }
+      function validOverview(m) {
+        return reqStr(m, 'name', 120) && reqStr(m, 'teamName', 80) && reqStr(m, 'location', 120)
+          && isoDate(m.startDate) && isoDate(m.endDate) && m.endDate >= m.startDate
+          && m.cyberRisk in ['Low', 'Medium', 'High', 'Critical'] && m.countryRisk in ['Low', 'Medium', 'High', 'Critical']
+          && optStr(m, 'cyberRationale', 2000) && optStr(m, 'countryRationale', 2000)
+          && optStr(m, 'createdByName', 80) && optStr(m, 'createdByEmail', 254) && optStr(m, 'updatedByName', 80);
+      }
+      // Every client edit is stamped with who made it and when.
+      allow update: if d().updatedAt == request.time && d().updatedBy == me()
+        && d().status in ['planning', 'live', 'archived'] && validDip(d()) && validOverview(d()) && (
+        // Anyone on the trip (and HOST) edits the overview fields.
+        ((isHost() || (verified() && me() in resource.data.memberUids)) && changed().hasOnly(overviewKeys()))
+        // Status moves only by HOST or the Team Leader (who may change overview fields in the same write).
+        || ((isHost() || (verified() && leaderUidOf(resource.data) == me())) && changed().hasOnly(overviewKeys().concat(['status'])))
+      );
 
       match /members/{uid} {
         allow read: if onTrip(tripId);

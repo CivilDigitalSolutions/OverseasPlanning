@@ -67,6 +67,9 @@ export interface Trip {
   dipAgreedDate: string;
   /** One of DIP_CLASSIFICATIONS, or "" when not set. */
   dipClassification: string;
+  /** Who last edited the trip record, and when (stamped on every client edit). */
+  updatedByName: string;
+  updatedAtMs: number;
   /** The HOST member who created the trip record. */
   createdByName: string;
   createdByEmail: string;
