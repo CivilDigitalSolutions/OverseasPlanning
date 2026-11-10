@@ -278,6 +278,7 @@ export async function uploadAttachment(s: Session, tripId: string, file: File, o
 }
 
 export const attachmentUrl = (a: Attachment) => getDownloadURL(storageRef(storage, a.path));
+export async function openAttachment(a: Attachment) { window.open(await attachmentUrl(a), "_blank", "noopener"); }
 
 export async function deleteAttachment(tripId: string, a: Attachment) {
   await deleteObject(storageRef(storage, a.path)).catch(() => undefined);

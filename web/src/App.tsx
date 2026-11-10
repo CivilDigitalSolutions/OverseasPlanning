@@ -1,6 +1,7 @@
 import { signOut } from "firebase/auth";
 import { useEffect } from "react";
 import { Account } from "./Account";
+import { ICON } from "./brand";
 import { AuthAction, ForgotPassword, SignIn, SignUp, VerifyEmail } from "./Auth";
 import { Icon, Link, Loading, usePath } from "./components";
 import { auth } from "./firebase";
@@ -61,7 +62,7 @@ function Shell({ session, pathname }: { session: Session; pathname: string }) {
   return (
     <div className="app">
       <header className="topbar">
-        <Link to="/" className="brand"><img src="/icons/icon-192.png" alt="" /> Overseas Planning</Link>
+        <Link to="/" className="brand"><img src={ICON} alt="" /> Overseas Planning</Link>
         <span className="spacer" />
         {session.isHost && <span className="badge info">HOST</span>}
         <Link to="/account" className="icon-btn"><span className="sr-only">Account</span><span style={{ color: "#fff" }}><Icon name="user" /></span></Link>

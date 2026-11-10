@@ -65,7 +65,7 @@ export function TripDetail({ session, tripId, tab }: { session: Session; tripId:
   return (
     <>
       <div className="page-head">
-        <button className="icon-btn" aria-label="Back" onClick={() => history.length > 1 ? history.back() : navigate("/")}><Icon name="back" /></button>
+        <button className="icon-btn" aria-label="Back" onClick={() => navigate(trip.status === "live" ? "/live" : trip.status === "archived" ? "/archived" : "/")}><Icon name="back" /></button>
         <div style={{ flex: 1, minWidth: 0 }}>
           <h1 style={{ overflowWrap: "anywhere" }}>{trip.name || trip.teamName}</h1>
           <div className="muted small">{trip.location} · {dateRange(trip.startDate, trip.endDate)}</div>

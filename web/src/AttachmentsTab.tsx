@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { Confirm, Empty, Icon, Loading, Notice, errorText, relTime } from "./components";
 import { formatBytes } from "./model";
-import { attachmentUrl, deleteAttachment, uploadAttachment, useAttachments, type Attachment } from "./store";
+import { deleteAttachment, openAttachment, uploadAttachment, useAttachments, type Attachment } from "./store";
 import type { TripCtx } from "./TripDetail";
 
 export function AttachmentsTab({ ctx }: { ctx: TripCtx }) {
@@ -25,7 +25,7 @@ export function AttachmentsTab({ ctx }: { ctx: TripCtx }) {
   }
 
   async function open(a: Attachment) {
-    try { window.open(await attachmentUrl(a), "_blank", "noopener"); } catch (e) { setErr(errorText(e)); }
+    try { await openAttachment(a); } catch (e) { setErr(errorText(e)); }
   }
 
   return (

@@ -3,6 +3,7 @@ import {
   ITEM_SCHEMAS, REQUEST_STATUS_LABEL, TRIP_ROLES, TRIP_STATUSES, dateRange, financeTotals, formatBytes, formatDate, formatMoney,
   kindLabel, type ItemSchema,
 } from "./model";
+import { saveFile } from "./download";
 import { loadTripSnapshot, type TripSnapshot } from "./store";
 
 /**
@@ -16,7 +17,7 @@ export async function exportTripPdf(tripId: string) {
   const pdf = new jsPDF({ unit: "pt", format: "a4" });
   buildPdf(pdf, autoTable as unknown as AutoTable, snap);
   const name = (snap.trip.name || snap.trip.teamName || "trip").replace(/[^\w\- ]+/g, "").trim().replace(/\s+/g, "-");
-  pdf.save(`${name}-${new Date().toISOString().slice(0, 10)}.pdf`);
+  await saveFile(`${name}-${new Date().toISOString().slice(0, 10)}.pdf`, pdf.output("blob"));
 }
 
 type AutoTable = (doc: JsPdf, opts: Record<string, unknown>) => void;

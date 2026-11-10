@@ -2,16 +2,23 @@ import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 
 // ---- Router (tiny: pathname + history API) ---------------------------------------------------------
 
+/** The demo build (an artifact frame) can't use real URLs, so it routes in memory. */
+const MEMORY = import.meta.env.VITE_DEMO === "1";
+let memoryPath = "/";
+
 export function navigate(path: string, replace = false) {
-  if (replace) history.replaceState(null, "", path); else history.pushState(null, "", path);
+  if (MEMORY) memoryPath = path;
+  else if (replace) history.replaceState(null, "", path); else history.pushState(null, "", path);
   window.dispatchEvent(new PopStateEvent("popstate"));
   window.scrollTo(0, 0);
 }
 
+export const currentPath = () => (MEMORY ? memoryPath : location.pathname + location.search);
+
 export function usePath(): string {
-  const [p, setP] = useState(location.pathname + location.search);
+  const [p, setP] = useState(currentPath);
   useEffect(() => {
-    const on = () => setP(location.pathname + location.search);
+    const on = () => setP(currentPath());
     window.addEventListener("popstate", on);
     return () => window.removeEventListener("popstate", on);
   }, []);

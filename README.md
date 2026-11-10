@@ -12,3 +12,10 @@ cd functions && npm install && npm test
 firebase emulators:exec --only firestore "npm --prefix functions run test:rules"
 firebase emulators:exec --only firestore,storage "npm --prefix functions run test:storage"
 ```
+
+## Demo build (claude.ai artifact)
+
+`cd web && npm run build:demo` builds `web/dist-demo/index.html`: the same screens with the
+Firebase modules swapped for `web/src/demo/*` (shared artifact database, simulated email links
+and biometrics, no security rules). For trying the app only — never for real trip data.
+`node web/scripts/demo-artifact.mjs web/dist-demo/index.html <out.html>` makes the artifact page.

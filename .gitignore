@@ -6,3 +6,4 @@ lib/
 *-debug.log
 .firebase/
 functions/lib/
+web/dist-demo/
