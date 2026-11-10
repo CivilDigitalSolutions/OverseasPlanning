@@ -36,6 +36,9 @@ export const riskTone = (r: string): "ok" | "warn" | "bad" | "crit" | "none" =>
 
 // ---- Trip -------------------------------------------------------------------------------------
 
+/** DiP classification options (owner, 2026-11-10). firestore.rules `validDip` lists the same values. */
+export const DIP_CLASSIFICATIONS = ["PSA", "CP", "Reece", "Event"] as const;
+
 export type TripStatus = "planning" | "live" | "archived";
 export const TRIP_STATUSES: { key: TripStatus; label: string }[] = [
   { key: "planning", label: "Planning" },
@@ -62,6 +65,8 @@ export interface Trip {
   /** DiP agreed, and the date it was agreed (yyyy-mm-dd; "" when not agreed). */
   dipAgreed: boolean;
   dipAgreedDate: string;
+  /** One of DIP_CLASSIFICATIONS, or "" when not set. */
+  dipClassification: string;
   /** The HOST member who created the trip record. */
   createdByName: string;
   createdByEmail: string;

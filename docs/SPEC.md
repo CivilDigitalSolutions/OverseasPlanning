@@ -37,6 +37,9 @@ A mobile-first, installable web app (PWA) to request, plan, run and debrief over
    shown to the requester) or **creates the trip** on one screen:
    - Cyber risk (drop-down) + rationale; Country risk (drop-down) + rationale.
    - Basic roles: **Team Leader, Office Manager, SPC, Intel Worker** (name + email each).
+   - **DiP classification** (owner, 2026-11-10): a drop-down — **PSA, CP, Reece, Event** (or not
+     set) — in the Overview's Trip section and the PDF; same editors as DiP Agreed
+     (`trips.dipClassification`, values checked in rules `validDip`).
    - **DiP Agreed** (owner, 2026-11-10): a checkbox and the date the DiP was agreed, in the
      Overview's Trip section and the PDF. HOST or the trip's Team Leader sets it (provisional —
      TODO(owner): confirm who may); an agreed DiP must carry a date (`trips.dipAgreed`,

@@ -135,7 +135,7 @@ const toTrip = (d: DocumentSnapshot): Trip => {
     cyberRisk: str(v.cyberRisk), cyberRationale: str(v.cyberRationale), countryRisk: str(v.countryRisk), countryRationale: str(v.countryRationale),
     roles, memberUids: Array.isArray(v.memberUids) ? v.memberUids : [], pendingEmails: Array.isArray(v.pendingEmails) ? v.pendingEmails : [],
     requestId: typeof v.requestId === "string" ? v.requestId : null, createdByName: str(v.createdByName), createdByEmail: str(v.createdByEmail),
-    dipAgreed: v.dipAgreed === true, dipAgreedDate: str(v.dipAgreedDate),
+    dipAgreed: v.dipAgreed === true, dipAgreedDate: str(v.dipAgreedDate), dipClassification: str(v.dipClassification),
     createdAtMs: ms(v.createdAt),
   };
 };
@@ -174,6 +174,10 @@ export const updateTripOverview = (id: string, patch: Partial<Pick<Trip, "name" 
   updateDoc(doc(db, "trips", id), { ...patch, updatedAt: serverTimestamp() });
 
 export const setTripStatus = (id: string, status: TripStatus) => updateDoc(doc(db, "trips", id), { status, updatedAt: serverTimestamp() });
+
+/** HOST or the Team Leader sets the DiP classification ("" clears it). */
+export const setDipClassification = (id: string, value: string) =>
+  updateDoc(doc(db, "trips", id), { dipClassification: value, updatedAt: serverTimestamp() });
 
 /** HOST or the Team Leader records the DiP agreement (an agreed DiP always carries its date). */
 export const setDipAgreed = (id: string, agreed: boolean, date: string) =>

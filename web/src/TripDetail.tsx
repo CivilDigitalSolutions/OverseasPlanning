@@ -6,12 +6,12 @@ import { DebriefTab } from "./DebriefTab";
 import { ItemsTab } from "./ItemsTab";
 import { MessagesTab } from "./MessagesTab";
 import {
-  EMAIL_RE, ITEM_SCHEMAS, RISK_LEVELS, TRIP_ROLES, TRIP_STATUSES, dateRange, formatDate, openCount, riskTone, statusHint, todayIso,
+  DIP_CLASSIFICATIONS, EMAIL_RE, ITEM_SCHEMAS, RISK_LEVELS, TRIP_ROLES, TRIP_STATUSES, dateRange, formatDate, openCount, riskTone, statusHint, todayIso,
   type RoleHolder, type Trip, type TripRoleKey, type TripStatus,
 } from "./model";
 import { exportTripPdf } from "./pdf";
 import { RequestsTab } from "./RequestsTab";
-import { setDipAgreed, setTripStatus, updateTripOverview, updateTripRoles, useTlRequests, useTrip, type Session } from "./store";
+import { setDipAgreed, setDipClassification, setTripStatus, updateTripOverview, updateTripRoles, useTlRequests, useTrip, type Session } from "./store";
 import { VaccinationsTab } from "./VaccinationsTab";
 
 export interface TripCtx {
@@ -139,19 +139,23 @@ function Overview({ ctx }: { ctx: TripCtx }) {
   );
 }
 
-/** "DiP Agreed" + the date it was agreed. Saves on change; HOST or the Team Leader only. */
+/** DiP classification, "DiP Agreed" and the date it was agreed. Saves on change; HOST or the Team Leader only. */
 function DipAgreed({ trip, canEdit }: { trip: Trip; canEdit: boolean }) {
   const [err, setErr] = useState("");
   const save = (agreed: boolean, date: string) => { setErr(""); setDipAgreed(trip.id, agreed, date).catch((e) => setErr(errorText(e))); };
+  const saveClass = (v: string) => { setErr(""); setDipClassification(trip.id, v).catch((e) => setErr(errorText(e))); };
   if (!canEdit) {
     return (
       <div className="row">
+        {trip.dipClassification ? <Badge tone="info">DiP {trip.dipClassification}</Badge> : <Badge>DiP classification not set</Badge>}
         {trip.dipAgreed ? <Badge tone="ok">DiP agreed {formatDate(trip.dipAgreedDate)}</Badge> : <Badge tone="warn">DiP not agreed</Badge>}
       </div>
     );
   }
   return (
     <div className="grid2" style={{ alignItems: "end" }}>
+      <SelectField label="DiP classification" value={trip.dipClassification} onChange={saveClass} options={DIP_CLASSIFICATIONS} placeholder="Not set" />
+      <span />
       <Checkbox checked={trip.dipAgreed} onChange={(v) => save(v, v ? trip.dipAgreedDate || todayIso() : "")}>DiP Agreed</Checkbox>
       {trip.dipAgreed && (
         <TextField label="Date DiP agreed" type="date" value={trip.dipAgreedDate}

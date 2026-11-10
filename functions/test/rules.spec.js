@@ -105,6 +105,14 @@ describe("trips", () => {
     await assertFails(updateDoc(doc(member(), "trips", TRIP), { dipAgreed: true, dipAgreedDate: "2026-11-10", updatedAt: serverTimestamp() }));
     await assertFails(updateDoc(doc(as("bob"), "trips", TRIP), { dipAgreed: true, dipAgreedDate: "2026-11-10", updatedAt: serverTimestamp() }));
   });
+  it("9c DiP classification: listed values only; HOST or Team Leader", async () => {
+    await assertSucceeds(updateDoc(doc(leader(), "trips", TRIP), { dipClassification: "PSA", updatedAt: serverTimestamp() }));
+    await assertSucceeds(updateDoc(doc(host(), "trips", TRIP), { dipClassification: "Event", updatedAt: serverTimestamp() }));
+    await assertSucceeds(updateDoc(doc(host(), "trips", TRIP), { dipClassification: "", updatedAt: serverTimestamp() }));
+    await assertFails(updateDoc(doc(host(), "trips", TRIP), { dipClassification: "Secret", updatedAt: serverTimestamp() }));
+    await assertFails(updateDoc(doc(member(), "trips", TRIP), { dipClassification: "CP", updatedAt: serverTimestamp() }));
+    await assertFails(updateDoc(doc(as("bob"), "trips", TRIP), { dipClassification: "CP", updatedAt: serverTimestamp() }));
+  });
   it("10 members subcollection is read-only", async () => {
     await assertSucceeds(getDocs(collection(member(), "trips", TRIP, "members")));
     await assertFails(setDoc(doc(member(), "trips", TRIP, "members", "eve"), { name: "Eve" }));

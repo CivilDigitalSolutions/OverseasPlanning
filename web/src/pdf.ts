@@ -56,7 +56,7 @@ function buildPdf(pdf: JsPdf, autoTable: AutoTable, s: TripSnapshot) {
   pdf.setFontSize(8).text(`Exported ${when(Date.now())} — contains personal data; handle accordingly.`, M, y); y += 6;
 
   heading("Overview");
-  kv([["DiP agreed", trip.dipAgreed ? `Yes — ${formatDate(trip.dipAgreedDate)}` : "No"], ["Team", trip.teamName], ["Location", trip.location], ["Dates", dateRange(trip.startDate, trip.endDate)],
+  kv([["DiP classification", trip.dipClassification || "Not set"], ["DiP agreed", trip.dipAgreed ? `Yes — ${formatDate(trip.dipAgreedDate)}` : "No"], ["Team", trip.teamName], ["Location", trip.location], ["Dates", dateRange(trip.startDate, trip.endDate)],
     ["Cyber risk", trip.cyberRisk], ["Cyber rationale", trip.cyberRationale], ["Country risk", trip.countryRisk], ["Country rationale", trip.countryRationale]]);
 
   heading("Roles");
