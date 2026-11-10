@@ -306,6 +306,7 @@ describe("controllers and the directory", () => {
     await assertSucceeds(setDoc(doc(member(), "directory", "alice"), { name: "Alice", email: "alice@x.com", updatedAt: serverTimestamp() }));
     await assertFails(setDoc(doc(member(), "directory", "alice"), { name: "Alice", email: "boss@x.com", updatedAt: serverTimestamp() }));
     await assertFails(setDoc(doc(member(), "directory", "eve"), { name: "Eve", email: "alice@x.com", updatedAt: serverTimestamp() }));
+    await assertFails(setDoc(doc(as("bob"), "directory", "bob"), { name: "Bob", email: "bob@x.com", spc: true, updatedAt: serverTimestamp() }));
     await assertSucceeds(getDocs(collection(outsider(), "directory")));
     await assertFails(getDocs(collection(unverified(), "directory")));
   });
@@ -314,6 +315,21 @@ describe("controllers and the directory", () => {
     await assertFails(updateDoc(doc(member(), "trips", TRIP), ed("alice", { extraAccessUids: ["eve"] })));
     await assertFails(updateDoc(doc(host(), "trips", TRIP), ed("host", { memberUids: ["eve"] })));
   });
+});
+
+describe("SPC role profile", () => {
+  const decide = (uid) => ({ status: "approved", decidedBy: uid, decidedByName: "x", decidedAt: serverTimestamp() });
+  it("P1 an SPC-profile holder on the trip authorises though not its named SPC", async () => {
+    const alicePlusSpc = as("alice", { spc: true });
+    await assertSucceeds(updateDoc(doc(alicePlusSpc, "trips", TRIP, "tlRequests", "q1"), decide("alice")));
+  });
+  it("P2 an SPC-profile holder NOT on the trip cannot see or authorise", async () => {
+    const outsiderSpc = as("eve", { spc: true });
+    await assertFails(getDoc(doc(outsiderSpc, "trips", TRIP)));
+    await assertFails(updateDoc(doc(outsiderSpc, "trips", TRIP, "tlRequests", "q1"), decide("eve")));
+  });
+  it("P3 without the profile, a member who isn't the named SPC still cannot", () =>
+    assertFails(updateDoc(doc(member(), "trips", TRIP, "tlRequests", "q1"), decide("alice"))));
 });
 
 describe("request deletion", () => {

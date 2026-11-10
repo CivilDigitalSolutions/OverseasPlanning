@@ -182,7 +182,7 @@ export function CreateTrip({ session: _s, requestId }: { session: Session; reque
         <section className="card stack">
           <h2>Roles</h2>
           {TRIP_ROLES.map((r) => (
-            <RolePersonFields key={r.key} label={r.label} value={roles[r.key]} onChange={(v) => setRoles({ ...roles, [r.key]: v })}
+            <RolePersonFields key={r.key} label={r.label} value={roles[r.key]} onlySpc={r.key === "spc"} onChange={(v) => setRoles({ ...roles, [r.key]: v })}
               errors={{ name: errors[`${r.key}.name`], email: errors[`${r.key}.email`] }} />
           ))}
         </section>

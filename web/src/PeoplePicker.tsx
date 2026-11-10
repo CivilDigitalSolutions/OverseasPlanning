@@ -13,13 +13,14 @@ export const personMatches = (p: { name: string; email: string }, q: string) => 
  * Search the in-app directory (everyone signed up) and pick a person (owner, 2026-11-10).
  * `exclude` hides people already chosen.
  */
-export function PeoplePicker({ label, placeholder = "Search name or email", exclude = [], onPick }: {
-  label: string; placeholder?: string; exclude?: string[]; onPick: (p: DirectoryPerson) => void;
+export function PeoplePicker({ label, placeholder = "Search name or email", exclude = [], onlySpc = false, onPick }: {
+  label: string; placeholder?: string; exclude?: string[]; onlySpc?: boolean; onPick: (p: DirectoryPerson) => void;
 }) {
   const directory = useDirectory();
   const [q, setQ] = useState("");
   const id = useId();
-  const results = directory && q.trim() ? directory.filter((p) => !exclude.includes(p.uid) && personMatches(p, q)).slice(0, 8) : [];
+  const pool = onlySpc ? directory?.filter((p) => p.spc) ?? null : directory;
+  const results = pool && q.trim() ? pool.filter((p) => !exclude.includes(p.uid) && personMatches(p, q)).slice(0, 8) : [];
   return (
     <div className="field picker">
       <label htmlFor={id}>{label}</label>
@@ -28,7 +29,7 @@ export function PeoplePicker({ label, placeholder = "Search name or email", excl
       {q.trim() && (
         <ul className="picker-results" role="listbox" aria-label={`${label} results`}>
           {directory === null ? <li className="muted small">Loading…</li>
-            : results.length === 0 ? <li className="muted small">No one found</li>
+            : results.length === 0 ? <li className="muted small">{onlySpc ? "No one with the SPC profile found" : "No one found"}</li>
             : results.map((p) => (
               <li key={p.uid}>
                 <button type="button" role="option" aria-selected="false" onClick={() => { onPick(p); setQ(""); }}>
@@ -48,9 +49,9 @@ export function PeoplePicker({ label, placeholder = "Search name or email", excl
  * A role holder: name + email, with a directory search that fills both. Typing an email of someone
  * not yet signed up is still allowed (they get access when they sign up).
  */
-export function RolePersonFields({ label, value, onChange, errors }: {
+export function RolePersonFields({ label, value, onChange, errors, onlySpc = false }: {
   label: string; value: { name: string; email: string }; onChange: (v: { name: string; email: string }) => void;
-  errors?: { name?: string; email?: string };
+  errors?: { name?: string; email?: string }; onlySpc?: boolean;
 }) {
   const [finding, setFinding] = useState(false);
   return (
@@ -60,7 +61,7 @@ export function RolePersonFields({ label, value, onChange, errors }: {
         <TextField label={`${label} email`} type="email" placeholder="name@example.com" value={value.email} onChange={(e) => onChange({ ...value, email: e })} error={errors?.email} />
       </div>
       {finding
-        ? <PeoplePicker label={`Find ${label}`} onPick={(p) => { onChange({ name: p.name, email: p.email }); setFinding(false); }} />
+        ? <PeoplePicker label={`Find ${label}`} onlySpc={onlySpc} onPick={(p) => { onChange({ name: p.name, email: p.email }); setFinding(false); }} />
         : <button type="button" className="btn ghost small" style={{ justifySelf: "start" }} onClick={() => setFinding(true)}><Icon name="user" size={16} /> Find in directory</button>}
     </div>
   );

@@ -1,7 +1,9 @@
 /**
  * Account manager (owner decision 2026-11-10): people with the ADMINISTRATOR permission (the
  * `admin` custom claim) add people to the app, delete accounts and change role profiles
- * (HOST, Controller, Administrator). Reached from the settings cog in the app.
+ * (HOST, Controller, SPC, Administrator). Reached from the settings cog in the app.
+ * SPC profile (owner, 2026-11-10): authorises requests and flights on any trip they can see,
+ * named as the trip's SPC or not; the trip SPC picker lists them.
  *
  * New accounts are created without a password; the administrator sends the person the
  * set-password link returned here. The address is treated as confirmed because an administrator
@@ -14,13 +16,13 @@ import { assertAdmin } from "./lib/auth";
 import { recomputeTripAccess } from "./lib/membership";
 import { cleanEmail, cleanText } from "./lib/validate";
 
-export const ROLE_PROFILES = ["host", "controller", "admin"] as const;
+export const ROLE_PROFILES = ["host", "controller", "spc", "admin"] as const;
 export type RoleProfile = (typeof ROLE_PROFILES)[number];
 
 /** Only known role names, as booleans. */
 export function cleanRoleProfiles(raw: unknown): Record<RoleProfile, boolean> {
   const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
-  return { host: r.host === true, controller: r.controller === true, admin: r.admin === true };
+  return { host: r.host === true, controller: r.controller === true, spc: r.spc === true, admin: r.admin === true };
 }
 
 const view = (u: UserRecord) => ({
@@ -52,7 +54,7 @@ export const createAccount = onCall(async (req) => {
   await getAuth().setCustomUserClaims(user.uid, roles);
   const db = getFirestore();
   await Promise.all([
-    db.collection("directory").doc(user.uid).set({ name, email, updatedAt: FieldValue.serverTimestamp() }),
+    db.collection("directory").doc(user.uid).set({ name, email, spc: roles.spc, updatedAt: FieldValue.serverTimestamp() }),
     db.collection("users").doc(user.uid).set({ name, email, createdAt: FieldValue.serverTimestamp(), createdByAdmin: adminUid }, { merge: true }),
     db.collection("roleChanges").add({ uid: user.uid, email, created: true, roles, by: adminUid, at: FieldValue.serverTimestamp() }),
   ]);
@@ -71,6 +73,8 @@ export const setAccountRoles = onCall(async (req) => {
   const user = await getAuth().getUser(target).catch(() => null);
   if (!user) throw new HttpsError("not-found", "Account not found.");
   await getAuth().setCustomUserClaims(target, { ...(user.customClaims ?? {}), ...roles });
+  // The SPC profile is shown in the directory so the trip SPC picker can offer only SPCs.
+  await getFirestore().collection("directory").doc(target).set({ spc: roles.spc }, { merge: true });
   await getFirestore().collection("roleChanges").add({ uid: target, email: user.email ?? "", roles, by: adminUid, at: FieldValue.serverTimestamp() });
   return { ok: true };
 });

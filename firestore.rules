@@ -42,7 +42,12 @@ service cloud.firestore {
     function controllerSees(tripId) { return isController() && isLiveTrip(trip(tripId)); }
 
     /** ONLY the trip's SPC approves or rejects requests — not HOST, not the Team Leader (owner decision 2026-11-10). */
-    function isSpc(tripId) { return verified() && trip(tripId).get('roles', {}).get('spc', {}).get('uid', null) == me(); }
+    /** Authorises requests and flights: the trip's named SPC, OR anyone with the SPC role profile on a
+     *  trip they can see (owner, 2026-11-10) — never HOST or the Team Leader as such. */
+    function isSpc(tripId) {
+      return verified() && (trip(tripId).get('roles', {}).get('spc', {}).get('uid', null) == me()
+        || (request.auth.token.get('spc', false) == true && onTrip(tripId)));
+    }
 
     // ---- users --------------------------------------------------------------------------------
     match /users/{uid} {
@@ -87,8 +92,10 @@ service cloud.firestore {
     // Each person writes only their own entry, with the email they signed in with.
     match /directory/{uid} {
       allow read: if verified();
-      allow create, update: if verified() && me() == uid && d().keys().hasOnly(['name', 'email', 'updatedAt'])
-        && reqStr(d(), 'name', 80) && d().email == request.auth.token.email && d().updatedAt == request.time;
+      allow create, update: if verified() && me() == uid && d().keys().hasOnly(['name', 'email', 'spc', 'updatedAt'])
+        && reqStr(d(), 'name', 80) && d().email == request.auth.token.email && d().updatedAt == request.time
+        // The SPC profile flag is set by administrators (functions) only.
+        && (request.method == 'create' ? !('spc' in d()) : !changed().hasAny(['spc']));
       allow delete: if verified() && me() == uid;
     }
 

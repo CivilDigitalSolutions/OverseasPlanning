@@ -23,8 +23,13 @@ A mobile-first, installable web app (PWA) to request, plan, run and debrief over
   `recordAgreement`, which writes an append-only record to `users/{uid}/agreements/{id}`:
   versions, method, email, IP, user agent, server time. If the record cannot be written the person
   is signed out again.
-- Role profiles are custom claims: **HOST** (triage team), **Controller** (live trips) and
-  **Administrator** (`admin`). The first administrator is created with
+- Role profiles are custom claims: **HOST** (triage team), **Controller** (live trips), **SPC** and
+  **Administrator** (`admin`).
+- **SPC role profile** (owner, 2026-11-10): an SPC-profile holder **authorises requests and flight
+  approvals on any trip they can see**, whether or not they are that trip's named SPC (rules
+  `isSpc`: named SPC OR spc claim + on the trip). The SPC picker on Create trip / Edit roles lists
+  only SPC-profile holders (flag mirrored on their directory entry by functions). TODO(owner):
+  should SPC-profile holders see every trip (today they see only trips they're on, or all if HOST)? The first administrator is created with
   `functions/scripts/grant-admin.js`.
 - **Account manager** (owner, 2026-11-10): administrators open it from the **settings cog** in the
   top bar. They search all accounts, **create** an account (name, email, role profiles — the
@@ -178,6 +183,7 @@ Assets · Messages · Attachments · Vaccinations · Contacts · Access · Debri
   - At the top of the Requests tab: a **Team Leader summary** and an **SPC summary**, free text,
     **editable by anyone on the trip** (owner, 2026-11-10), each showing who saved it last and when
     (`trips/{id}/summaries/{teamLeader|spc}`).
+  - (2026-11-10: "the SPC" below means the trip's named SPC **or anyone with the SPC role profile**.)
   - Workflow: **Awaiting approval → Approved / Rejected → Completed**. **Only the trip's SPC
     approves or rejects** (with a note) — not HOST, not the Team Leader (owner decision
     2026-11-10; enforced in `firestore.rules` `isSpc`). The SPC also marks an

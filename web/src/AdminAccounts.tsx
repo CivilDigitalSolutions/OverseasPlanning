@@ -9,9 +9,9 @@ import { createAccount, deleteManagedAccount, listAccounts, setAccountRoles, typ
  * to the app, delete accounts and change role profiles. Reached from the settings cog.
  */
 const ROLE_LABELS: { key: keyof RoleProfiles; label: string }[] = [
-  { key: "host", label: "HOST" }, { key: "controller", label: "Controller" }, { key: "admin", label: "Administrator" },
+  { key: "host", label: "HOST" }, { key: "controller", label: "Controller" }, { key: "spc", label: "SPC" }, { key: "admin", label: "Administrator" },
 ];
-const NO_ROLES: RoleProfiles = { host: false, controller: false, admin: false };
+const NO_ROLES: RoleProfiles = { host: false, controller: false, spc: false, admin: false };
 
 export function AdminAccounts({ session }: { session: Session }) {
   const [accounts, setAccounts] = useState<ManagedAccount[] | null>(null);

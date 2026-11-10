@@ -127,7 +127,7 @@ export function SignUp() {
     setBusy(true);
     const claimed = await claimInvitedAccount(email.trim());
     await be().set(accountPath(), {
-      host: false, controller: false, admin: false, ...claimed,
+      host: false, controller: false, spc: false, admin: false, ...claimed,
       name: name.trim().slice(0, 80), email: email.trim().toLowerCase(), emailVerified: Object.keys(claimed).length > 0,
       pwHash: await hash(password), passkeys: [], createdAt: Date.now(),
     });

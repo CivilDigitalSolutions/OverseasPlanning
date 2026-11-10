@@ -13,7 +13,7 @@ export function LiveTrip({ session, tripId }: { session: Session; tripId: string
   if (trip === undefined) return <Loading />;
   if (trip === null) return <Empty>Trip not found, or you don't have access.</Empty>;
   const isTeamLeader = !!trip.roles.teamLeader?.uid && trip.roles.teamLeader.uid === session.uid;
-  const isSpc = !!trip.roles.spc?.uid && trip.roles.spc.uid === session.uid;
+  const isSpc = (!!trip.roles.spc?.uid && trip.roles.spc.uid === session.uid) || session.isSpcProfile;
   const ctx: TripCtx = { session, trip, canLead: session.isHost || isTeamLeader, isTeamLeader, isSpc };
   const phase = tripPhase(trip, todayIso());
 

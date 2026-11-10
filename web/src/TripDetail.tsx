@@ -50,7 +50,8 @@ export function TripDetail({ session, tripId, tab }: { session: Session; tripId:
   if (trip === null) return <Empty>Trip not found, or you don't have access.</Empty>;
 
   const isTeamLeader = !!trip.roles.teamLeader?.uid && trip.roles.teamLeader.uid === session.uid;
-  const isSpc = !!trip.roles.spc?.uid && trip.roles.spc.uid === session.uid;
+  // Authorises requests and flights: the trip's named SPC, or anyone with the SPC role profile.
+  const isSpc = (!!trip.roles.spc?.uid && trip.roles.spc.uid === session.uid) || session.isSpcProfile;
   const ctx: TripCtx = { session, trip, canLead: session.isHost || isTeamLeader, isTeamLeader, isSpc };
   const active = TABS.some((t) => t.key === tab) ? tab : "overview";
   const open = tl ? openCount(tl) : 0;
@@ -262,7 +263,7 @@ function RolesEditor({ trip, onClose }: { trip: Trip; onClose: () => void }) {
           <TextField label="HOST assessment email" type="email" placeholder="name@example.com" value={host.email} onChange={(v) => setHost({ ...host, email: v })} />
         </div>
         {TRIP_ROLES.map((r) => (
-          <RolePersonFields key={r.key} label={r.label} value={roles[r.key]} onChange={(v) => setRoles({ ...roles, [r.key]: v })} />
+          <RolePersonFields key={r.key} label={r.label} value={roles[r.key]} onlySpc={r.key === "spc"} onChange={(v) => setRoles({ ...roles, [r.key]: v })} />
         ))}
         {err && <Notice tone="bad">{err}</Notice>}
       </div>

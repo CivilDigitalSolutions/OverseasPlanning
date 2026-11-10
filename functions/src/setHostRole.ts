@@ -13,7 +13,7 @@ import { cleanEmail } from "./lib/validate";
  * The first admin is created with functions/scripts/grant-admin.js. The person must sign out and
  * in (or the app refreshes the token) before the change takes effect.
  */
-const ROLES = ["host", "controller", "admin"] as const;
+const ROLES = ["host", "controller", "spc", "admin"] as const;
 
 export const setRole = onCall(async (req) => {
   const { uid: adminUid } = assertAdmin(req);

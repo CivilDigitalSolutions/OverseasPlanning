@@ -37,6 +37,8 @@ export interface Session {
   isAdmin: boolean;
   /** Controller role profile: sees and posts on every live trip (owner, 2026-11-10). */
   isController: boolean;
+  /** SPC role profile: authorises requests/flights on any trip they can see (owner, 2026-11-10). */
+  isSpcProfile: boolean;
 }
 
 /** undefined = still loading, null = signed out. Claims (host/admin) come from the ID token. */
@@ -48,7 +50,7 @@ export function useSession(): Session | null | undefined {
     const c = token?.claims ?? {};
     setS({
       user, uid: user.uid, email: user.email ?? "", name: user.displayName || user.email || "",
-      emailVerified: user.emailVerified, isHost: c.host === true, isAdmin: c.admin === true, isController: c.controller === true,
+      emailVerified: user.emailVerified, isHost: c.host === true, isAdmin: c.admin === true, isController: c.controller === true, isSpcProfile: c.spc === true,
     });
   }), []);
   return s;
@@ -496,16 +498,17 @@ export const setRole = (email: string, role: "host" | "controller", on: boolean)
 
 // ---- Directory (owner, 2026-11-10): people pickers search everyone signed up ---------------------
 
-export interface DirectoryPerson { uid: string; name: string; email: string }
+/** `spc`: holds the SPC role profile (offered by the trip SPC picker). */
+export interface DirectoryPerson { uid: string; name: string; email: string; spc?: boolean }
 export function useDirectory(): DirectoryPerson[] | null {
   const [list, setList] = useState<DirectoryPerson[] | null>(null);
   useEffect(() => onSnapshot(collection(db, "directory"), (snap) =>
-    setList(snap.docs.map((d) => ({ uid: d.id, name: str(d.get("name")), email: str(d.get("email")) })).filter((p) => p.name)), () => setList([])), []);
+    setList(snap.docs.map((d) => ({ uid: d.id, name: str(d.get("name")), email: str(d.get("email")), spc: d.get("spc") === true })).filter((p) => p.name)), () => setList([])), []);
   return list;
 }
 /** Keep my directory entry current (name + the email I signed in with). */
 export const upsertDirectory = (s: Session) =>
-  setDoc(doc(db, "directory", s.uid), { name: s.name.slice(0, 80) || s.email, email: s.email, updatedAt: serverTimestamp() });
+  setDoc(doc(db, "directory", s.uid), { name: s.name.slice(0, 80) || s.email, email: s.email, updatedAt: serverTimestamp() }, { merge: true });
 
 // ---- Controllers: every live trip (basic details only) --------------------------------------------
 
@@ -626,7 +629,7 @@ export async function loadTripSnapshot(tripId: string): Promise<TripSnapshot> {
 
 // ---- Account manager (Administrator permission; owner, 2026-11-10) -------------------------------
 
-export interface RoleProfiles { host: boolean; controller: boolean; admin: boolean }
+export interface RoleProfiles { host: boolean; controller: boolean; spc: boolean; admin: boolean }
 export interface ManagedAccount {
   uid: string; name: string; email: string; emailVerified: boolean; disabled: boolean; invited: boolean;
   roles: RoleProfiles; createdAt: string; lastSignIn: string;

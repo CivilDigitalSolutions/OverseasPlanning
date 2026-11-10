@@ -35,8 +35,8 @@ function useDocOf<T>(path: string, map: (s: Snap | null) => T): T | undefined {
 
 // ---- Session (demo accounts) -------------------------------------------------------------------
 
-export interface Session { uid: string; email: string; name: string; emailVerified: boolean; isHost: boolean; isAdmin: boolean; isController: boolean }
-export interface Account { name: string; email: string; emailVerified: boolean; host: boolean; controller: boolean; admin: boolean; passkeys: { id: string; label: string; createdAtMs: number; lastUsedAtMs: number }[] }
+export interface Session { uid: string; email: string; name: string; emailVerified: boolean; isHost: boolean; isAdmin: boolean; isController: boolean; isSpcProfile: boolean }
+export interface Account { name: string; email: string; emailVerified: boolean; host: boolean; controller: boolean; spc: boolean; admin: boolean; passkeys: { id: string; label: string; createdAtMs: number; lastUsedAtMs: number }[] }
 
 const SIGNED_IN = "op.demo.signedIn";
 let signedIn = (() => { try { return localStorage.getItem(SIGNED_IN) === "1"; } catch { return false; } })();
@@ -48,7 +48,7 @@ export function setSignedIn(v: boolean) {
 }
 export const accountPath = () => `accounts/${be().uid}`;
 export const toAccount = (s: Snap | null): Account | null => s ? {
-  name: str(s.data.name), email: str(s.data.email), emailVerified: s.data.emailVerified === true, host: s.data.host === true, controller: s.data.controller === true, admin: s.data.admin === true,
+  name: str(s.data.name), email: str(s.data.email), emailVerified: s.data.emailVerified === true, host: s.data.host === true, controller: s.data.controller === true, spc: s.data.spc === true, admin: s.data.admin === true,
   passkeys: Array.isArray(s.data.passkeys) ? s.data.passkeys as Account["passkeys"] : [],
 } : null;
 
@@ -64,7 +64,7 @@ export function useSession(): Session | null | undefined {
   if (!signedIn || !account) return null;
   return {
     uid: be().uid, email: account.email, name: account.name || account.email, emailVerified: account.emailVerified,
-    isHost: account.host, isAdmin: account.admin, isController: account.controller,
+    isHost: account.host, isAdmin: account.admin, isController: account.controller, isSpcProfile: account.spc,
   };
 }
 
@@ -107,11 +107,12 @@ export async function syncPendingAccess() {
 
 // ---- Directory + membership (production: functions/src/lib/membership.ts) ----------------------
 
-export interface DirectoryPerson { uid: string; name: string; email: string }
+/** `spc`: holds the SPC role profile (offered by the trip SPC picker). */
+export interface DirectoryPerson { uid: string; name: string; email: string; spc?: boolean }
 /** The in-app directory: everyone signed up with a confirmed email (demo: the demo accounts). */
 export function useDirectory(): DirectoryPerson[] | null {
-  const list = useColl("accounts", {}, (s) => ({ uid: s.id, name: str(s.data.name), email: str(s.data.email), ok: s.data.emailVerified === true }));
-  return list ? list.filter((p) => p.ok && p.name).map(({ uid, name, email }) => ({ uid, name, email })) : null;
+  const list = useColl("accounts", {}, (s) => ({ uid: s.id, name: str(s.data.name), email: str(s.data.email), ok: s.data.emailVerified === true, spc: s.data.spc === true }));
+  return list ? list.filter((p) => p.ok && p.name).map(({ uid, name, email, spc }) => ({ uid, name, email, spc })) : null;
 }
 export const upsertDirectory = async (_s: Session) => undefined; // demo: accounts are the directory
 
@@ -553,7 +554,7 @@ export const call = async () => { throw new Error("Not available in the demo.");
 
 // ---- Account manager (Administrator permission) ---------------------------------------------------
 
-export interface RoleProfiles { host: boolean; controller: boolean; admin: boolean }
+export interface RoleProfiles { host: boolean; controller: boolean; spc: boolean; admin: boolean }
 export interface ManagedAccount {
   uid: string; name: string; email: string; emailVerified: boolean; disabled: boolean; invited: boolean;
   roles: RoleProfiles; createdAt: string; lastSignIn: string;
@@ -562,7 +563,7 @@ export async function listAccounts(): Promise<ManagedAccount[]> {
   return (await be().list("accounts")).map((a) => ({
     uid: a.id, name: str(a.data.name), email: str(a.data.email), emailVerified: a.data.emailVerified === true, disabled: false,
     invited: a.data.invited === true,
-    roles: { host: a.data.host === true, controller: a.data.controller === true, admin: a.data.admin === true },
+    roles: { host: a.data.host === true, controller: a.data.controller === true, spc: a.data.spc === true, admin: a.data.admin === true },
     createdAt: a.data.createdAt ? new Date(Number(a.data.createdAt)).toISOString() : "", lastSignIn: "",
   })).sort((x, y) => (x.name || x.email).localeCompare(y.name || y.email));
 }
@@ -597,7 +598,7 @@ export async function deleteManagedAccount(uid: string) {
 export async function claimInvitedAccount(email: string): Promise<Partial<RoleProfiles>> {
   const hits = (await be().list("accounts", { where: [["email", "==", email.toLowerCase()]] })).filter((h) => h.data.invited === true && h.id !== be().uid);
   if (!hits.length) return {};
-  const roles = { host: hits[0].data.host === true, controller: hits[0].data.controller === true, admin: hits[0].data.admin === true };
+  const roles = { host: hits[0].data.host === true, controller: hits[0].data.controller === true, spc: hits[0].data.spc === true, admin: hits[0].data.admin === true };
   for (const h of hits) await be().del(`accounts/${h.id}`);
   return roles;
 }
