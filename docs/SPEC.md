@@ -215,6 +215,10 @@ only their own.
 
 - As little descriptive text as possible: each input has a label header and hint text inside the
   input (placeholder). Badges and icons carry status.
+- **Phone keyboard** (owner, 2026-11-10): tapping any text box on a phone scrolls it to sit just
+  above the on-screen keyboard (with its label), on pages, in pop-up forms and in the message box
+  (`web/src/keyboard.ts`; pop-ups size themselves to the area above the keyboard; Android is also
+  told to resize the page with `interactive-widget=resizes-content`).
 
 ## 12. Security
 

@@ -136,10 +136,11 @@ input[aria-invalid="true"], select[aria-invalid="true"], textarea[aria-invalid="
 .divider::before, .divider::after { content: ""; flex: 1; height: 1px; background: var(--line); }
 
 /* ---- modal ---- */
-.modal-backdrop { position: fixed; inset: 0; background: rgba(9, 20, 40, .45); display: grid; place-items: end center; z-index: 50; }
+/* Fits the area above an open phone keyboard (--vvh/--vvt from keyboard.ts), else the full screen. */
+.modal-backdrop { position: fixed; left: 0; right: 0; top: var(--vvt, 0px); height: var(--vvh, 100dvh); background: rgba(9, 20, 40, .45); display: grid; place-items: end center; z-index: 50; }
 @media (min-width: 640px) { .modal-backdrop { place-items: center; } }
 .modal {
-  background: #fff; width: 100%; max-width: 560px; max-height: 92dvh; overflow: auto; border-radius: 16px 16px 0 0;
+  background: #fff; width: 100%; max-width: 560px; max-height: calc(var(--vvh, 100dvh) * .92); overflow: auto; overscroll-behavior: contain; border-radius: 16px 16px 0 0;
   padding: 18px 16px; padding-bottom: max(18px, env(safe-area-inset-bottom));
 }
 @media (min-width: 640px) { .modal { border-radius: 16px; } }
@@ -158,7 +159,7 @@ input[aria-invalid="true"], select[aria-invalid="true"], textarea[aria-invalid="
 .install .btn.secondary { background: transparent; color: #fff; border-color: rgba(255, 255, 255, .4); }
 
 /* ---- chat ---- */
-.chat { display: flex; flex-direction: column; height: calc(100dvh - 250px); min-height: 360px; background: #EAF0F7; border-radius: var(--radius); border: 1px solid var(--line); }
+.chat { display: flex; flex-direction: column; height: calc(var(--vvh, 100dvh) - 250px); min-height: 360px; background: #EAF0F7; border-radius: var(--radius); border: 1px solid var(--line); }
 .chat-log { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 2px; }
 .day-pill { align-self: center; background: #fff; color: var(--ink-2); font-size: .76rem; font-weight: 700; padding: 3px 10px; border-radius: 999px; margin: 10px 0 6px; box-shadow: var(--shadow); }
 .unread-line { align-self: stretch; text-align: center; font-size: .76rem; font-weight: 700; color: var(--primary); background: var(--primary-soft); padding: 3px; border-radius: 6px; margin: 8px 0; }

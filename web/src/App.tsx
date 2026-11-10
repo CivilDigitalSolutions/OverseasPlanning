@@ -6,6 +6,10 @@ import { AuthAction, ForgotPassword, SignIn, SignUp, VerifyEmail } from "./Auth"
 import { Icon, Link, Loading, usePath } from "./components";
 import { auth } from "./firebase";
 import { InstallPrompt } from "./InstallPrompt";
+import { installKeyboardAvoidance } from "./keyboard";
+
+// Keep the field being typed in just above the phone keyboard (pages and pop-up forms).
+installKeyboardAvoidance();
 import { LiveTrip } from "./LiveTrip";
 import { Privacy, Terms } from "./Legal";
 import { CreateTrip, NewRequest, RequestsPage } from "./Requests";
