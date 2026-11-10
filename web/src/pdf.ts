@@ -56,11 +56,14 @@ function buildPdf(pdf: JsPdf, autoTable: AutoTable, s: TripSnapshot) {
   pdf.setFontSize(8).text(`Exported ${when(Date.now())} — contains personal data; handle accordingly.`, M, y); y += 6;
 
   heading("Overview");
-  kv([["Created by (HOST)", [trip.createdByName, trip.createdByEmail].filter(Boolean).join(" · ")], ["Team", trip.teamName], ["Location", trip.location], ["Dates", dateRange(trip.startDate, trip.endDate)],
+  kv([["Team", trip.teamName], ["Location", trip.location], ["Dates", dateRange(trip.startDate, trip.endDate)],
     ["Cyber risk", trip.cyberRisk], ["Cyber rationale", trip.cyberRationale], ["Country risk", trip.countryRisk], ["Country rationale", trip.countryRationale]]);
 
   heading("Roles");
-  table(["Role", "Name", "Email"], TRIP_ROLES.map((r) => [r.label, trip.roles[r.key]?.name ?? "", trip.roles[r.key]?.email ?? ""]));
+  table(["Role", "Name", "Email"], [
+    ["HOST assessment", trip.createdByName, trip.createdByEmail],
+    ...TRIP_ROLES.map((r) => [r.label, trip.roles[r.key]?.name ?? "", trip.roles[r.key]?.email ?? ""]),
+  ]);
 
   heading("Access");
   table(["Name", "Email", "Added by"], [

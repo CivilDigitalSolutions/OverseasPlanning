@@ -111,6 +111,9 @@ function Overview({ ctx }: { ctx: TripCtx }) {
       <section className="card stack">
         <div className="row"><h2 style={{ flex: 1 }}>Roles</h2>{session.isHost && <button className="btn ghost small" onClick={() => setEditRoles(true)}><Icon name="edit" size={16} /> Edit</button>}</div>
         <dl className="kv">
+          {/* The HOST member who did the initial assessment and created the trip record. */}
+          <dt>HOST assessment</dt>
+          <dd>{trip.createdByName || "—"}{trip.createdByEmail ? <span className="muted small"> · {trip.createdByEmail}</span> : null}</dd>
           {TRIP_ROLES.map((r) => {
             const h = trip.roles[r.key];
             return [<dt key={`${r.key}t`}>{r.label}</dt>, <dd key={`${r.key}d`}>{h?.name || "—"}{h?.email ? <span className="muted small"> · {h.email}{!h.uid && " (not signed up)"}</span> : null}</dd>];
@@ -119,7 +122,7 @@ function Overview({ ctx }: { ctx: TripCtx }) {
       </section>
       <section className="card stack">
         <h2>Trip</h2>
-        <dl className="kv"><dt>Created by (HOST)</dt><dd>{trip.createdByName || "—"}{trip.createdByEmail ? <span className="muted small"> · {trip.createdByEmail}</span> : null}</dd><dt>Team</dt><dd>{trip.teamName}</dd><dt>Location</dt><dd>{trip.location}</dd><dt>Dates</dt><dd>{dateRange(trip.startDate, trip.endDate)}</dd></dl>
+        <dl className="kv"><dt>Team</dt><dd>{trip.teamName}</dd><dt>Location</dt><dd>{trip.location}</dd><dt>Dates</dt><dd>{dateRange(trip.startDate, trip.endDate)}</dd></dl>
         {canLead && (
           <div className="row">
             {TRIP_STATUSES.filter((s) => s.key !== trip.status).map((s) => (

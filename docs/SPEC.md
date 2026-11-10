@@ -38,7 +38,7 @@ A mobile-first, installable web app (PWA) to request, plan, run and debrief over
    - Cyber risk (drop-down) + rationale; Country risk (drop-down) + rationale.
    - Basic roles: **Team Leader, Office Manager, SPC, Intel Worker** (name + email each).
    - The trip records the HOST member who created it (`createdByName`, `createdByEmail`), shown on
-     the Overview as "Created by (HOST)" and in the PDF.
+     the Overview's **Roles** section as "HOST assessment" (first row) and in the PDF's Roles table.
 3. **Planning → Live → Archived** — status is set by HOST or the trip's Team Leader. A hint
    appears when the dates say it should move; it is never changed automatically.
 4. Lists: **Planning**, **Live trips**, **Archived**. Planning and Archived are the same view;
