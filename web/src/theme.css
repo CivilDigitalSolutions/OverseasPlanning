@@ -197,3 +197,7 @@ table.simple td.num, table.simple th.num { text-align: right; white-space: nowra
 .chip-select { border: 0; background: transparent; font: inherit; font-size: .78rem; color: var(--ink-2); min-height: 0; padding: 0 2px; width: auto; }
 .passenger-add { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) auto; gap: 8px; }
 @media (max-width: 420px) { .passenger-add { grid-template-columns: minmax(0, 1fr) auto; } .passenger-add select { grid-column: 1 / -1; } }
+
+/* While a text field is focused on a phone: room below the content so the last field can be
+   scrolled up above the keyboard (keyboard.ts). */
+html.kb-open main, html.kb-open .modal { padding-bottom: 50vh; }

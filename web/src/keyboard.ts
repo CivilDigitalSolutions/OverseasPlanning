@@ -7,10 +7,28 @@
  *    pop-up forms use to fit above the keyboard instead of behind it;
  *  - when a text field gains focus, once the keyboard has opened, the nearest scrolling container
  *    (a pop-up form or the page) is scrolled so the field's bottom sits just above the keyboard.
+ *
+ * Inside an embedding frame (e.g. the claude.ai app on Android) the page is NOT told about the
+ * keyboard at all: the visible area never shrinks. When no shrink is seen, the keyboard is assumed
+ * to cover the lower ASSUMED_KEYBOARD share of the frame, and extra space is added at the bottom
+ * (html.kb-open) so even the last field on a page or form can be lifted above it.
  */
 
 const GAP = 12; // px between the field and the top of the keyboard
 const TOP_CLEARANCE = 72; // never push a field under the sticky header
+/** Share of the screen a phone keyboard covers when the page can't measure it. */
+export const ASSUMED_KEYBOARD = 0.45;
+/** A real keyboard shrinks the visible area by at least this much. */
+const KEYBOARD_MIN_PX = 120;
+
+/**
+ * The visible height to plan for: the measured one when a keyboard shrink was seen, otherwise the
+ * frame height minus the assumed keyboard. Pure, so it is unit-tested.
+ */
+export function plannedVisibleHeight(measured: number, tallestSeen: number): number {
+  if (tallestSeen - measured >= KEYBOARD_MIN_PX) return measured; // real keyboard measured
+  return Math.round(measured * (1 - ASSUMED_KEYBOARD));
+}
 
 /**
  * How far to scroll (positive = down) so a field spanning [top, bottom] in viewport coordinates
@@ -44,11 +62,14 @@ function scrollParent(el: HTMLElement): HTMLElement | null {
   return null;
 }
 
+let tallest = 0;
+const measuredHeight = () => (window.visualViewport ? window.visualViewport.height : window.innerHeight);
+
 function reveal(el: HTMLElement) {
   if (document.activeElement !== el) return;
   const vv = window.visualViewport;
   const visibleTop = vv ? vv.offsetTop : 0;
-  const visibleHeight = vv ? vv.height : window.innerHeight;
+  const visibleHeight = plannedVisibleHeight(measuredHeight(), tallest);
   // A text field's own label sits just above it; keep the label in view too.
   const box = (el.closest(".field") as HTMLElement | null) ?? el;
   const r = box.getBoundingClientRect();
@@ -67,6 +88,7 @@ export function installKeyboardAvoidance() {
   if (!touch) return;
 
   const vv = window.visualViewport;
+  tallest = measuredHeight();
   const publish = () => {
     const root = document.documentElement.style;
     root.setProperty("--vvh", `${vv ? vv.height : window.innerHeight}px`);
@@ -80,8 +102,20 @@ export function installKeyboardAvoidance() {
     // The keyboard animates in over ~250-400 ms; check as it settles.
     timers = [120, 350, 650].map((ms) => window.setTimeout(() => reveal(el), ms));
   };
-  document.addEventListener("focusin", (e) => { if (isTextField(e.target as Element)) schedule(e.target as HTMLElement); });
+  const html = document.documentElement;
+  document.addEventListener("focusin", (e) => {
+    if (!isTextField(e.target as Element)) return;
+    html.classList.add("kb-open"); // room below the last field, so it can be lifted
+    schedule(e.target as HTMLElement);
+  });
+  document.addEventListener("focusout", () => {
+    // Remove the extra room once focus has really left text fields (not just moved between them).
+    window.setTimeout(() => { if (!isTextField(document.activeElement)) html.classList.remove("kb-open"); }, 250);
+  });
   const onResize = () => {
+    // Only a growing visible area raises the baseline (rotation, keyboard closing).
+    if (!isTextField(document.activeElement)) tallest = measuredHeight();
+    else tallest = Math.max(tallest, measuredHeight());
     publish();
     const el = document.activeElement;
     if (isTextField(el)) schedule(el);
