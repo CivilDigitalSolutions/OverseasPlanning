@@ -37,6 +37,10 @@ A mobile-first, installable web app (PWA) to request, plan, run and debrief over
    shown to the requester) or **creates the trip** on one screen:
    - Cyber risk (drop-down) + rationale; Country risk (drop-down) + rationale.
    - Basic roles: **Team Leader, Office Manager, SPC, Intel Worker** (name + email each).
+   - **DiP Agreed** (owner, 2026-11-10): a checkbox and the date the DiP was agreed, in the
+     Overview's Trip section and the PDF. HOST or the trip's Team Leader sets it (provisional —
+     TODO(owner): confirm who may); an agreed DiP must carry a date (`trips.dipAgreed`,
+     `trips.dipAgreedDate`, rules `validDip`).
    - The trip records the HOST member who created it (`createdByName`, `createdByEmail`), shown on
      the Overview's **Roles** section as "HOST assessment" (first row) and in the PDF's Roles table.
 3. **Planning → Live → Archived** — status is set by HOST or the trip's Team Leader. A hint
@@ -78,8 +82,8 @@ Storage: `trips/{tripId}/attachments/{attId}/{fileName}` (≤ 25 MB, members onl
 
 ## 5. Planning tabs
 
-Single trip screen with tab navigation: Overview · Flights · Hotels · Hire cars · Assets ·
-Requests · Messages · Attachments · Vaccinations · Access · Debrief, plus **PDF export**.
+Single trip screen with tab navigation: Overview · Requests · Flights · Hotels · Hire cars ·
+Assets · Messages · Attachments · Vaccinations · Access · Debrief, plus **PDF export**.
 
 - **Flights**: airline, flight number, from, to, departs, arrives, booking ref, **cost of booking**
   (amount + currency), **named persons**, notes.

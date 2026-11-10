@@ -97,6 +97,14 @@ describe("trips", () => {
     await assertSucceeds(updateDoc(doc(leader(), "trips", TRIP), { status: "live", updatedAt: serverTimestamp() }));
     await assertFails(updateDoc(doc(leader(), "trips", TRIP), { cyberRisk: "Low", updatedAt: serverTimestamp() }));
   });
+  it("9b DiP Agreed: HOST or Team Leader, with a date; members cannot", async () => {
+    await assertSucceeds(updateDoc(doc(leader(), "trips", TRIP), { dipAgreed: true, dipAgreedDate: "2026-11-10", updatedAt: serverTimestamp() }));
+    await assertFails(updateDoc(doc(host(), "trips", TRIP), { dipAgreed: true, dipAgreedDate: "", updatedAt: serverTimestamp() }));
+    await assertFails(updateDoc(doc(host(), "trips", TRIP), { dipAgreed: false, dipAgreedDate: "2026-11-10", updatedAt: serverTimestamp() }));
+    await assertSucceeds(updateDoc(doc(host(), "trips", TRIP), { dipAgreed: false, dipAgreedDate: "", updatedAt: serverTimestamp() }));
+    await assertFails(updateDoc(doc(member(), "trips", TRIP), { dipAgreed: true, dipAgreedDate: "2026-11-10", updatedAt: serverTimestamp() }));
+    await assertFails(updateDoc(doc(as("bob"), "trips", TRIP), { dipAgreed: true, dipAgreedDate: "2026-11-10", updatedAt: serverTimestamp() }));
+  });
   it("10 members subcollection is read-only", async () => {
     await assertSucceeds(getDocs(collection(member(), "trips", TRIP, "members")));
     await assertFails(setDoc(doc(member(), "trips", TRIP, "members", "eve"), { name: "Eve" }));

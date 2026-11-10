@@ -1,17 +1,17 @@
 import { useState } from "react";
 import { AccessTab } from "./AccessTab";
 import { AttachmentsTab } from "./AttachmentsTab";
-import { Badge, Empty, Icon, Loading, Modal, Notice, SelectField, TextField, errorText, navigate } from "./components";
+import { Badge, Checkbox, Empty, Icon, Loading, Modal, Notice, SelectField, TextField, errorText, navigate } from "./components";
 import { DebriefTab } from "./DebriefTab";
 import { ItemsTab } from "./ItemsTab";
 import { MessagesTab } from "./MessagesTab";
 import {
-  EMAIL_RE, ITEM_SCHEMAS, RISK_LEVELS, TRIP_ROLES, TRIP_STATUSES, dateRange, openCount, riskTone, statusHint, todayIso,
+  EMAIL_RE, ITEM_SCHEMAS, RISK_LEVELS, TRIP_ROLES, TRIP_STATUSES, dateRange, formatDate, openCount, riskTone, statusHint, todayIso,
   type RoleHolder, type Trip, type TripRoleKey, type TripStatus,
 } from "./model";
 import { exportTripPdf } from "./pdf";
 import { RequestsTab } from "./RequestsTab";
-import { setTripStatus, updateTripOverview, updateTripRoles, useTlRequests, useTrip, type Session } from "./store";
+import { setDipAgreed, setTripStatus, updateTripOverview, updateTripRoles, useTlRequests, useTrip, type Session } from "./store";
 import { VaccinationsTab } from "./VaccinationsTab";
 
 export interface TripCtx {
@@ -26,11 +26,11 @@ export interface TripCtx {
 
 const TABS = [
   { key: "overview", label: "Overview" },
+  { key: "requests", label: "Requests" },
   { key: "flights", label: "Flights" },
   { key: "hotels", label: "Hotels" },
   { key: "cars", label: "Hire cars" },
   { key: "assets", label: "Assets" },
-  { key: "requests", label: "Requests" },
   { key: "messages", label: "Messages" },
   { key: "attachments", label: "Attachments" },
   { key: "vaccinations", label: "Vaccinations" },
@@ -123,6 +123,7 @@ function Overview({ ctx }: { ctx: TripCtx }) {
       <section className="card stack">
         <h2>Trip</h2>
         <dl className="kv"><dt>Team</dt><dd>{trip.teamName}</dd><dt>Location</dt><dd>{trip.location}</dd><dt>Dates</dt><dd>{dateRange(trip.startDate, trip.endDate)}</dd></dl>
+        <DipAgreed trip={trip} canEdit={canLead} />
         {canLead && (
           <div className="row">
             {TRIP_STATUSES.filter((s) => s.key !== trip.status).map((s) => (
@@ -134,6 +135,29 @@ function Overview({ ctx }: { ctx: TripCtx }) {
       </section>
       {editRisk && <RiskEditor trip={trip} onClose={() => setEditRisk(false)} />}
       {editRoles && <RolesEditor trip={trip} onClose={() => setEditRoles(false)} />}
+    </div>
+  );
+}
+
+/** "DiP Agreed" + the date it was agreed. Saves on change; HOST or the Team Leader only. */
+function DipAgreed({ trip, canEdit }: { trip: Trip; canEdit: boolean }) {
+  const [err, setErr] = useState("");
+  const save = (agreed: boolean, date: string) => { setErr(""); setDipAgreed(trip.id, agreed, date).catch((e) => setErr(errorText(e))); };
+  if (!canEdit) {
+    return (
+      <div className="row">
+        {trip.dipAgreed ? <Badge tone="ok">DiP agreed {formatDate(trip.dipAgreedDate)}</Badge> : <Badge tone="warn">DiP not agreed</Badge>}
+      </div>
+    );
+  }
+  return (
+    <div className="grid2" style={{ alignItems: "end" }}>
+      <Checkbox checked={trip.dipAgreed} onChange={(v) => save(v, v ? trip.dipAgreedDate || todayIso() : "")}>DiP Agreed</Checkbox>
+      {trip.dipAgreed && (
+        <TextField label="Date DiP agreed" type="date" value={trip.dipAgreedDate}
+          onChange={(v) => { if (v) save(true, v); }} />
+      )}
+      {err && <Notice tone="bad">{err}</Notice>}
     </div>
   );
 }

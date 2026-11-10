@@ -177,6 +177,7 @@ const toTrip = (s: Snap): Trip => {
     cyberRisk: str(v.cyberRisk), cyberRationale: str(v.cyberRationale), countryRisk: str(v.countryRisk), countryRationale: str(v.countryRationale),
     roles, memberUids: Array.isArray(v.memberUids) ? v.memberUids as string[] : [], pendingEmails: Array.isArray(v.pendingEmails) ? v.pendingEmails as string[] : [],
     requestId: typeof v.requestId === "string" ? v.requestId : null, createdByName: str(v.createdByName), createdByEmail: str(v.createdByEmail),
+    dipAgreed: v.dipAgreed === true, dipAgreedDate: str(v.dipAgreedDate),
     createdAtMs: ms(v.createdAt),
   };
 };
@@ -192,6 +193,8 @@ export const useMembers = (tripId: string) => useColl(`trips/${tripId}/members`,
 
 export const updateTripOverview = (id: string, patch: Record<string, unknown>) => be().patch(`trips/${id}`, { ...patch, updatedAt: now() });
 export const setTripStatus = (id: string, status: TripStatus) => be().patch(`trips/${id}`, { status, updatedAt: now() });
+export const setDipAgreed = (id: string, agreed: boolean, date: string) =>
+  be().patch(`trips/${id}`, { dipAgreed: agreed, dipAgreedDate: agreed ? date : "", updatedAt: now() });
 
 export async function updateTripRoles(tripId: string, roles: Partial<Record<TripRoleKey, RoleHolder>>) {
   const t = await be().get(`trips/${tripId}`);

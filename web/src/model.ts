@@ -59,6 +59,9 @@ export interface Trip {
   memberUids: string[];
   pendingEmails: string[];
   requestId: string | null;
+  /** DiP agreed, and the date it was agreed (yyyy-mm-dd; "" when not agreed). */
+  dipAgreed: boolean;
+  dipAgreedDate: string;
   /** The HOST member who created the trip record. */
   createdByName: string;
   createdByEmail: string;

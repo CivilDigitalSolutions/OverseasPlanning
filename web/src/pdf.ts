@@ -56,7 +56,7 @@ function buildPdf(pdf: JsPdf, autoTable: AutoTable, s: TripSnapshot) {
   pdf.setFontSize(8).text(`Exported ${when(Date.now())} — contains personal data; handle accordingly.`, M, y); y += 6;
 
   heading("Overview");
-  kv([["Team", trip.teamName], ["Location", trip.location], ["Dates", dateRange(trip.startDate, trip.endDate)],
+  kv([["DiP agreed", trip.dipAgreed ? `Yes — ${formatDate(trip.dipAgreedDate)}` : "No"], ["Team", trip.teamName], ["Location", trip.location], ["Dates", dateRange(trip.startDate, trip.endDate)],
     ["Cyber risk", trip.cyberRisk], ["Cyber rationale", trip.cyberRationale], ["Country risk", trip.countryRisk], ["Country rationale", trip.countryRationale]]);
 
   heading("Roles");
@@ -71,14 +71,6 @@ function buildPdf(pdf: JsPdf, autoTable: AutoTable, s: TripSnapshot) {
     ...trip.pendingEmails.map((e) => ["(pending sign-up)", e, ""]),
   ]);
 
-  for (const key of ["flights", "hotels", "cars", "assets"] as const) {
-    const schema: ItemSchema = ITEM_SCHEMAS[key];
-    heading(schema.plural);
-    const cols = schema.fields.filter((f) => f.type !== "textarea");
-    table(cols.map((f) => f.label), s.items[key].map((it) => cols.map((f) => displayValue(f, it.values))), { styles: { fontSize: 7.5, cellPadding: 3 } });
-    for (const it of s.items[key]) if (it.values.notes) text(`${schema.title(it.values)} — notes`, String(it.values.notes));
-  }
-
   heading("Requests");
   table(["Type", "Request", "Details", "Status", "Decision", "Completed"], s.tlRequests.map((r) => [
     kindLabel(r.kind),
@@ -88,6 +80,14 @@ function buildPdf(pdf: JsPdf, autoTable: AutoTable, s: TripSnapshot) {
     r.decidedByName ? `${r.decidedByName} · ${when(r.decidedAtMs)}${r.decisionNote ? `\n${r.decisionNote}` : ""}` : "",
     r.completedByName ? `${r.completedByName} · ${when(r.completedAtMs)}${r.response ? `\n${r.response}` : ""}` : "",
   ]));
+
+  for (const key of ["flights", "hotels", "cars", "assets"] as const) {
+    const schema: ItemSchema = ITEM_SCHEMAS[key];
+    heading(schema.plural);
+    const cols = schema.fields.filter((f) => f.type !== "textarea");
+    table(cols.map((f) => f.label), s.items[key].map((it) => cols.map((f) => displayValue(f, it.values))), { styles: { fontSize: 7.5, cellPadding: 3 } });
+    for (const it of s.items[key]) if (it.values.notes) text(`${schema.title(it.values)} — notes`, String(it.values.notes));
+  }
 
   heading("Vaccination declarations");
   table(["Traveller", "Vaccinations", "Notes", "Declared"], s.vaccinations.map((v) => [

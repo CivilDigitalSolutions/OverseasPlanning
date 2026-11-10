@@ -9,7 +9,7 @@ import {
 const trip = (o: Partial<Trip>): Trip => ({
   id: "t", name: "", teamName: "Alpha", location: "Paris, France", startDate: "2026-05-01", endDate: "2026-05-07", status: "planning",
   cyberRisk: "Low", cyberRationale: "", countryRisk: "Medium", countryRationale: "", roles: {}, memberUids: [], pendingEmails: [],
-  requestId: null, createdByName: "", createdByEmail: "", createdAtMs: 0, ...o,
+  requestId: null, createdByName: "", createdByEmail: "", dipAgreed: false, dipAgreedDate: "", createdAtMs: 0, ...o,
 });
 
 test("request validation", () => {
