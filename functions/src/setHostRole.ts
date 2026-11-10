@@ -13,7 +13,7 @@ import { cleanEmail } from "./lib/validate";
  * The first admin is created with functions/scripts/grant-admin.js. The person must sign out and
  * in (or the app refreshes the token) before the change takes effect.
  */
-const ROLES = ["host", "controller"] as const;
+const ROLES = ["host", "controller", "admin"] as const;
 
 export const setRole = onCall(async (req) => {
   const { uid: adminUid } = assertAdmin(req);
@@ -22,6 +22,7 @@ export const setRole = onCall(async (req) => {
   const role = req.data?.role;
   if (!ROLES.includes(role)) throw new HttpsError("invalid-argument", "Unknown role.");
   const on = req.data?.on === true;
+  if (role === "admin" && !on && req.auth?.token.email?.toLowerCase() === email) throw new HttpsError("failed-precondition", "You can't remove your own Administrator permission.");
   const user = await getAuth().getUserByEmail(email).catch(() => null);
   if (!user) throw new HttpsError("not-found", "No account with that email.");
   await getAuth().setCustomUserClaims(user.uid, { ...(user.customClaims ?? {}), [role]: on });

@@ -36,7 +36,7 @@ function useDocOf<T>(path: string, map: (s: Snap | null) => T): T | undefined {
 // ---- Session (demo accounts) -------------------------------------------------------------------
 
 export interface Session { uid: string; email: string; name: string; emailVerified: boolean; isHost: boolean; isAdmin: boolean; isController: boolean }
-export interface Account { name: string; email: string; emailVerified: boolean; host: boolean; controller: boolean; passkeys: { id: string; label: string; createdAtMs: number; lastUsedAtMs: number }[] }
+export interface Account { name: string; email: string; emailVerified: boolean; host: boolean; controller: boolean; admin: boolean; passkeys: { id: string; label: string; createdAtMs: number; lastUsedAtMs: number }[] }
 
 const SIGNED_IN = "op.demo.signedIn";
 let signedIn = (() => { try { return localStorage.getItem(SIGNED_IN) === "1"; } catch { return false; } })();
@@ -48,7 +48,7 @@ export function setSignedIn(v: boolean) {
 }
 export const accountPath = () => `accounts/${be().uid}`;
 export const toAccount = (s: Snap | null): Account | null => s ? {
-  name: str(s.data.name), email: str(s.data.email), emailVerified: s.data.emailVerified === true, host: s.data.host === true, controller: s.data.controller === true,
+  name: str(s.data.name), email: str(s.data.email), emailVerified: s.data.emailVerified === true, host: s.data.host === true, controller: s.data.controller === true, admin: s.data.admin === true,
   passkeys: Array.isArray(s.data.passkeys) ? s.data.passkeys as Account["passkeys"] : [],
 } : null;
 
@@ -64,7 +64,7 @@ export function useSession(): Session | null | undefined {
   if (!signedIn || !account) return null;
   return {
     uid: be().uid, email: account.email, name: account.name || account.email, emailVerified: account.emailVerified,
-    isHost: account.host, isAdmin: true, isController: account.controller,
+    isHost: account.host, isAdmin: account.admin, isController: account.controller,
   };
 }
 
@@ -550,3 +550,59 @@ export async function loadTripSnapshot(tripId: string): Promise<TripSnapshot> {
 
 /** Not used by the demo screens; kept so imports match ../store.ts. */
 export const call = async () => { throw new Error("Not available in the demo."); };
+
+// ---- Account manager (Administrator permission) ---------------------------------------------------
+
+export interface RoleProfiles { host: boolean; controller: boolean; admin: boolean }
+export interface ManagedAccount {
+  uid: string; name: string; email: string; emailVerified: boolean; disabled: boolean; invited: boolean;
+  roles: RoleProfiles; createdAt: string; lastSignIn: string;
+}
+export async function listAccounts(): Promise<ManagedAccount[]> {
+  return (await be().list("accounts")).map((a) => ({
+    uid: a.id, name: str(a.data.name), email: str(a.data.email), emailVerified: a.data.emailVerified === true, disabled: false,
+    invited: a.data.invited === true,
+    roles: { host: a.data.host === true, controller: a.data.controller === true, admin: a.data.admin === true },
+    createdAt: a.data.createdAt ? new Date(Number(a.data.createdAt)).toISOString() : "", lastSignIn: "",
+  })).sort((x, y) => (x.name || x.email).localeCompare(y.name || y.email));
+}
+/** Demo: a pre-created account the person claims by signing up with the same email. */
+export async function createAccount(a: { name: string; email: string; roles: RoleProfiles }) {
+  const email = a.email.trim().toLowerCase();
+  if ((await be().list("accounts", { where: [["email", "==", email]] })).length) throw new Error("An account already exists for that email.");
+  const id = `invited-${be().newId()}`;
+  await be().set(`accounts/${id}`, { name: a.name.trim(), email, emailVerified: true, invited: true, ...a.roles, passkeys: [], createdAt: now() });
+  return { uid: id, setupLink: "" };
+}
+export async function setAccountRoles(uid: string, roles: RoleProfiles) {
+  if (uid === be().uid && !roles.admin) throw new Error("You can't remove your own Administrator permission.");
+  await be().patch(`accounts/${uid}`, { ...roles });
+}
+export async function deleteManagedAccount(uid: string) {
+  if (uid === be().uid) throw new Error("You can't delete your own account here.");
+  const trips = await be().list("trips", { where: [["memberUids", "array-contains", uid]] });
+  for (const t of trips) {
+    const roles = (t.data.roles ?? {}) as Record<string, RoleHolder>;
+    for (const r of Object.values(roles)) if (r?.uid === uid) r.uid = null;
+    await be().patch(`trips/${t.id}`, { roles, extraAccessUids: ((t.data.extraAccessUids as string[] | undefined) ?? []).filter((x) => x !== uid), ...(t.data.requesterUid === uid ? { requesterUid: DELETE } : {}) });
+    for (const f of await be().list(`trips/${t.id}/flights`)) {
+      const ps = (f.data.passengers ?? []) as Record<string, unknown>[];
+      if (ps.some((p) => p?.uid === uid)) await be().patch(`trips/${t.id}/flights/${f.id}`, { passengers: ps.map((p) => (p?.uid === uid ? { name: p.name, travelClass: p.travelClass } : p)) });
+    }
+    await recomputeAccess(t.id);
+  }
+  await be().del(`accounts/${uid}`);
+}
+/** Demo sign-up: take over an account an administrator created for this email (roles carry over). */
+export async function claimInvitedAccount(email: string): Promise<Partial<RoleProfiles>> {
+  const hits = (await be().list("accounts", { where: [["email", "==", email.toLowerCase()]] })).filter((h) => h.data.invited === true && h.id !== be().uid);
+  if (!hits.length) return {};
+  const roles = { host: hits[0].data.host === true, controller: hits[0].data.controller === true, admin: hits[0].data.admin === true };
+  for (const h of hits) await be().del(`accounts/${h.id}`);
+  return roles;
+}
+
+export async function myTripReasons(tripId: string, uid: string): Promise<string[]> {
+  const d = await be().get(`trips/${tripId}/members/${uid}`);
+  return Array.isArray(d?.data.reasons) ? (d!.data.reasons as unknown[]).map(String) : [];
+}

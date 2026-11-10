@@ -23,8 +23,17 @@ A mobile-first, installable web app (PWA) to request, plan, run and debrief over
   `recordAgreement`, which writes an append-only record to `users/{uid}/agreements/{id}`:
   versions, method, email, IP, user agent, server time. If the record cannot be written the person
   is signed out again.
-- Roles: **HOST** (triage team) and **admin** are custom claims. The first admin is created with
-  `functions/scripts/grant-admin.js`; admins grant HOST from the Account page (`setHostRole`).
+- Role profiles are custom claims: **HOST** (triage team), **Controller** (live trips) and
+  **Administrator** (`admin`). The first administrator is created with
+  `functions/scripts/grant-admin.js`.
+- **Account manager** (owner, 2026-11-10): administrators open it from the **settings cog** in the
+  top bar. They search all accounts, **create** an account (name, email, role profiles — the
+  server creates it without a password and returns a set-password link to send; TODO(owner): send
+  it by branded email), **change role profiles** (HOST / Controller / Administrator, saved on tick)
+  and **delete** an account (removed from every trip's roles, flights and additional access, the
+  directory and their passkeys; agreement records and requests are kept for the audit trail).
+  An administrator cannot remove their own Administrator permission or delete themselves.
+  Callables: `listAccounts`, `createAccount`, `setAccountRoles`, `deleteAccount` (admin only).
 
 ### 2a. Terms of Use — TODO(owner)
 ### 2b. Privacy Policy — TODO(owner)
@@ -54,6 +63,9 @@ A mobile-first, installable web app (PWA) to request, plan, run and debrief over
      the Overview's **Roles** section as "HOST assessment" (first row) and in the PDF's Roles table.
 3. **Planning → Live → Archived** — status is set by HOST or the trip's Team Leader. A hint
    appears when the dates say it should move; it is never changed automatically.
+4. **My requests** (non-HOST) lists your own requests awaiting triage or declined, and a request
+   that became a trip only while you're **directly** part of that trip (role, flight or additional
+   access) — not merely as its requester (owner, 2026-11-10).
 4. Lists: **Planning**, **Live trips**, **Archived**. Planning and Archived are the same view;
    Archived adds a search (every word must match: name, team, location, dates, risk, role holders).
 5. **Live trips** (owner, 2026-11-10) is a date window, not a status: every trip that is **not

@@ -1,11 +1,11 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Badge, Confirm, Empty, Link, Loading, Notice, SelectField, TextField, errorText, navigate } from "./components";
 import {
   EMAIL_RE, RISK_LEVELS, TRIP_ROLES, dateRange, validateRequest,
   type RequestInput, type RoleHolder, type TripRequest, type TripRoleKey,
 } from "./model";
 import { RolePersonFields } from "./PeoplePicker";
-import { createTrip, declineRequest, submitRequest, useRequest, type Session } from "./store";
+import { createTrip, declineRequest, myTripReasons, submitRequest, useRequest, type Session } from "./store";
 
 const STATUS = { submitted: { tone: "warn", label: "Awaiting triage" }, accepted: { tone: "ok", label: "Trip created" }, declined: { tone: "bad", label: "Declined" } } as const;
 
@@ -43,10 +43,18 @@ export function NewRequest({ session }: { session: Session }) {
   );
 }
 
-/** HOST: the triage inbox. Everyone else: their own requests and what happened to them. */
+/**
+ * HOST: the triage inbox. Everyone else: their own requests and what happened to them — but a
+ * request that became a trip is listed only while they are DIRECTLY part of that trip (a role, a
+ * flight or additional access), not merely as the requester (owner, 2026-11-10).
+ */
 export function RequestsPage({ session, requests }: { session: Session; requests: TripRequest[] | null }) {
   const [filter, setFilter] = useState<"submitted" | "all">("submitted");
-  const list = requests ? (session.isHost && filter === "submitted" ? requests.filter((r) => r.status === "submitted") : requests) : null;
+  const direct = useDirectTrips(session, requests);
+  const mine = requests && !session.isHost
+    ? (direct ? requests.filter((r) => r.status !== "accepted" || (r.tripId && direct.has(r.tripId))) : null)
+    : requests;
+  const list = mine ? (session.isHost && filter === "submitted" ? mine.filter((r) => r.status === "submitted") : mine) : null;
   return (
     <>
       <div className="page-head">
@@ -81,6 +89,20 @@ export function RequestsPage({ session, requests }: { session: Session; requests
       )}
     </>
   );
+}
+
+/** Trip ids (from my accepted requests) where I'm directly on the trip — any reason other than Requester. */
+function useDirectTrips(session: Session, requests: TripRequest[] | null): Set<string> | null {
+  const [direct, setDirect] = useState<Set<string> | null>(null);
+  const ids = (requests ?? []).filter((r) => r.status === "accepted" && r.tripId).map((r) => r.tripId!).sort().join(",");
+  useEffect(() => {
+    if (session.isHost || requests === null) return;
+    let live = true;
+    Promise.all(ids ? ids.split(",").map(async (id) => [id, (await myTripReasons(id, session.uid)).some((x) => x !== "Requester")] as const) : [])
+      .then((pairs) => { if (live) setDirect(new Set(pairs.filter(([, ok]) => ok).map(([id]) => id))); });
+    return () => { live = false; };
+  }, [ids, session.uid, session.isHost, requests === null]); // eslint-disable-line react-hooks/exhaustive-deps
+  return direct;
 }
 
 type RoleForm = Record<TripRoleKey, RoleHolder>;

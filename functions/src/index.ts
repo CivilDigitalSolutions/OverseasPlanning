@@ -7,6 +7,7 @@ export { recordAgreement } from "./recordAgreement";
 export { createTrip, updateTripRoles } from "./createTrip";
 export { addTripAccess, removeTripAccess, syncPendingAccess, onFlightWritten } from "./tripAccess";
 export { listLiveTrips } from "./listLiveTrips";
+export { listAccounts, createAccount, setAccountRoles, deleteAccount } from "./adminAccounts";
 export { setHostRole, setRole } from "./setHostRole";
 export {
   passkeyRegistrationOptions, passkeyRegister, passkeySignInOptions, passkeySignIn, listPasskeys, deletePasskey,

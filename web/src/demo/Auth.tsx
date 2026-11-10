@@ -8,7 +8,7 @@ import { Checkbox, Icon, Link, Modal, Notice, TextField, navigate } from "../com
 import { ICON } from "../brand";
 import { EMAIL_RE } from "../model";
 import { be } from "./backend";
-import { accountPath, recordAgreement, setSignedIn, syncPendingAccess, toAccount, type Session } from "./store";
+import { accountPath, claimInvitedAccount, recordAgreement, setSignedIn, syncPendingAccess, toAccount, type Session } from "./store";
 
 const MIN_PASSWORD = 10;
 const hash = async (s: string) => Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s))), (b) => b.toString(16).padStart(2, "0")).join("");
@@ -125,8 +125,10 @@ export function SignUp() {
     setErrors(v);
     if (Object.keys(v).length) return;
     setBusy(true);
+    const claimed = await claimInvitedAccount(email.trim());
     await be().set(accountPath(), {
-      name: name.trim().slice(0, 80), email: email.trim().toLowerCase(), emailVerified: false, host: false,
+      host: false, controller: false, admin: false, ...claimed,
+      name: name.trim().slice(0, 80), email: email.trim().toLowerCase(), emailVerified: Object.keys(claimed).length > 0,
       pwHash: await hash(password), passkeys: [], createdAt: Date.now(),
     });
     await finishSignIn("signup");

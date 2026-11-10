@@ -1,10 +1,9 @@
 import { sendPasswordResetEmail } from "firebase/auth";
 import { useEffect, useState } from "react";
-import { Confirm, Icon, Notice, TextField, errorText, relTime } from "./components";
+import { Confirm, Icon, Notice, errorText, relTime } from "./components";
 import { auth } from "./firebase";
-import { EMAIL_RE } from "./model";
 import { addPasskey, biometricAvailable, deletePasskey, deviceLabel, listPasskeys, passkeysSupported, type PasskeyInfo } from "./passkeys";
-import { setRole, type Session } from "./store";
+import { type Session } from "./store";
 
 export function Account({ session }: { session: Session }) {
   return (
@@ -15,7 +14,6 @@ export function Account({ session }: { session: Session }) {
         <PasswordReset email={session.email} />
       </section>
       <Passkeys />
-      {session.isAdmin && <HostAdmin />}
     </>
   );
 }
@@ -62,34 +60,6 @@ function Passkeys() {
       )}
       {removing && <Confirm title="Remove passkey" confirmLabel="Remove" danger onClose={() => setRemoving(null)}
         onConfirm={async () => { await deletePasskey(removing.id); await load(); }}>{removing.label}</Confirm>}
-    </section>
-  );
-}
-
-/** Admin-only: grant or remove the HOST (triage) and Controller role profiles. */
-function HostAdmin() {
-  const [email, setEmail] = useState("");
-  const [msg, setMsg] = useState<{ tone: "ok" | "bad"; text: string } | null>(null);
-  const valid = EMAIL_RE.test(email.trim());
-  const run = async (role: "host" | "controller", on: boolean) => {
-    setMsg(null);
-    const label = role === "host" ? "HOST" : "Controller";
-    try { await setRole(email.trim().toLowerCase(), role, on); setMsg({ tone: "ok", text: `${label} role ${on ? "granted" : "removed"}.` }); }
-    catch (e) { setMsg({ tone: "bad", text: errorText(e) }); }
-  };
-  return (
-    <section className="card stack">
-      <h2>Role profiles</h2>
-      <TextField label="Email" type="email" placeholder="name@example.com" value={email} onChange={setEmail} />
-      {msg && <Notice tone={msg.tone}>{msg.text}</Notice>}
-      <div className="row">
-        <button className="btn" disabled={!valid} onClick={() => run("host", true)}>Make HOST</button>
-        <button className="btn danger" disabled={!valid} onClick={() => run("host", false)}>Remove HOST</button>
-      </div>
-      <div className="row">
-        <button className="btn" disabled={!valid} onClick={() => run("controller", true)}>Make Controller</button>
-        <button className="btn danger" disabled={!valid} onClick={() => run("controller", false)}>Remove Controller</button>
-      </div>
     </section>
   );
 }

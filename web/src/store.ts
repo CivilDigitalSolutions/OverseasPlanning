@@ -623,3 +623,22 @@ export async function loadTripSnapshot(tripId: string): Promise<TripSnapshot> {
     financeNotes: Object.fromEntries(notes.docs.map((d) => [d.id, { name: str(v(d).name), text: str(v(d).text) }])),
   };
 }
+
+// ---- Account manager (Administrator permission; owner, 2026-11-10) -------------------------------
+
+export interface RoleProfiles { host: boolean; controller: boolean; admin: boolean }
+export interface ManagedAccount {
+  uid: string; name: string; email: string; emailVerified: boolean; disabled: boolean; invited: boolean;
+  roles: RoleProfiles; createdAt: string; lastSignIn: string;
+}
+export const listAccounts = () => call<{ accounts: ManagedAccount[] }>("listAccounts").then((r) => r.accounts.map((a) => ({ ...a, invited: !a.lastSignIn })));
+export const createAccount = (a: { name: string; email: string; roles: RoleProfiles }) => call<{ uid: string; setupLink: string }>("createAccount", a);
+export const setAccountRoles = (uid: string, roles: RoleProfiles) => call("setAccountRoles", { uid, roles });
+export const deleteManagedAccount = (uid: string) => call("deleteAccount", { uid });
+
+/** Why I'm on a trip ("Requester", "Team Leader", "On flight …", "Additional access"); [] if not on it. */
+export async function myTripReasons(tripId: string, uid: string): Promise<string[]> {
+  const d = await getDoc(doc(db, "trips", tripId, "members", uid)).catch(() => null);
+  const r = d?.exists() ? d.get("reasons") : null;
+  return Array.isArray(r) ? r.map(String) : [];
+}

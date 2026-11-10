@@ -65,3 +65,11 @@ describe("live window", () => {
     assert.equal(isLiveTrip({ status: "live", startDate: "2027-05-01" }, now), true);
   });
 });
+
+describe("account manager", () => {
+  const { cleanRoleProfiles } = require("../lib/adminAccounts");
+  it("role profiles: only host, controller, admin, as booleans", () => {
+    assert.deepEqual(cleanRoleProfiles({ host: true, admin: "yes", owner: true }), { host: true, controller: false, admin: false });
+    assert.deepEqual(cleanRoleProfiles(null), { host: false, controller: false, admin: false });
+  });
+});
