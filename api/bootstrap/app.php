@@ -30,6 +30,8 @@ return Application::configure(basePath: dirname(__DIR__))
             headers: Request::HEADER_X_FORWARDED_FOR | Request::HEADER_X_FORWARDED_PROTO | Request::HEADER_X_FORWARDED_PORT,
         );
         $middleware->statefulApi();
+        // An API has no login page to redirect to: signed-out callers get a JSON 401, whatever they accept.
+        $middleware->redirectGuestsTo(fn () => null);
         $middleware->prependToGroup('api', [RequestGuard::class]);
         $middleware->appendToGroup('api', [SecurityHeaders::class, IdleTimeout::class, EnsureAccountActive::class, AuditTrail::class]);
         $middleware->alias(['verified.email' => EnsureEmailVerified::class]);

@@ -7,3 +7,6 @@ lib/
 .firebase/
 functions/lib/
 web/dist-demo/
+web/dist-aws/
+api/.env
+api/storage/*.key

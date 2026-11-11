@@ -9,7 +9,9 @@
     "preview": "vite preview",
     "test": "node --test test/*.test.ts",
     "icons": "cd .. && python3 web/scripts/make-brand.py web/public/icons web/src/assets",
-    "build:demo": "tsc --noEmit && vite build --config vite.demo.config.ts"
+    "build:demo": "tsc --noEmit && vite build --config vite.demo.config.ts",
+    "build:aws": "tsc --noEmit && tsc --noEmit -p tsconfig.sw.json && VITE_BACKEND=laravel vite build --outDir dist-aws",
+    "dev:aws": "VITE_BACKEND=laravel vite"
   },
   "dependencies": {
     "@simplewebauthn/browser": "^14.0.0",

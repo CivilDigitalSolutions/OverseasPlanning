@@ -26,6 +26,11 @@ class SecurityControlsTest extends TestCase
         $this->assertTrue(DB::table('security_events')->where('type', 'request_refused')->exists());
     }
 
+    public function test_signed_out_requests_get_json_401_whatever_they_accept(): void
+    {
+        $this->get($this->api('trips'), ['Accept' => 'text/html'])->assertUnauthorized()->assertJsonPath('message', 'Unauthenticated.');
+    }
+
     public function test_bearer_tokens_are_ignored(): void
     {
         $this->withHeader('Authorization', 'Bearer 1|abc')->getJson($this->api('trips'))->assertUnauthorized();

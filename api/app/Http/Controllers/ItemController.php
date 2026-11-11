@@ -27,7 +27,7 @@ class ItemController extends Controller
         if ($i->spc_decision) {
             $values += [
                 'spcDecision' => $i->spc_decision, 'spcRationale' => $i->spc_rationale, 'spcDecidedBy' => $i->spc_decided_by,
-                'spcDecidedByName' => $i->spc_decided_by_name, 'spcDecidedAtMs' => self::ms($i->spc_decided_at),
+                'spcDecidedByName' => $i->spc_decided_by_name, 'spcDecidedAt' => self::ms($i->spc_decided_at),
             ];
         }
         return ['id' => $i->id, 'values' => $values, 'createdByName' => $i->created_by_name, 'updatedAtMs' => self::ms($i->updated_at ?? $i->created_at)];
@@ -77,7 +77,7 @@ class ItemController extends Controller
         $item = $this->find($t->id, $kind, $id);
         $raw = $request->input('values');
         if (is_array($raw)) {
-            $raw = array_diff_key($raw, array_flip([...self::SPC_KEYS, 'spcDecidedAtMs']));
+            $raw = array_diff_key($raw, array_flip(self::SPC_KEYS));
         }
         [$values, $errors] = ItemSchemas::check($kind, $raw);
         if ($errors) {

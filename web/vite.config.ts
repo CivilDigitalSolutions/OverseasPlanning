@@ -1,6 +1,7 @@
-import { defineConfig, loadEnv } from "vite";
+import { defineConfig, loadEnv, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
+import { resolve } from "node:path";
 
 /**
  * Voyager Trip Manager web app, installable as a PWA.
@@ -11,16 +12,47 @@ import { VitePWA } from "vite-plugin-pwa";
  */
 const REQUIRED = ["VITE_FB_API_KEY", "VITE_FB_AUTH_DOMAIN", "VITE_FB_PROJECT_ID", "VITE_FB_APP_ID"];
 
+/**
+ * VITE_BACKEND=laravel builds the app against the Laravel API on AWS (docs/MIGRATION-PLAN.md §5):
+ * the Firebase-facing modules are swapped for src/api/* (same technique as the demo build). Every
+ * screen component is unchanged. The output contains no Firebase code or configuration.
+ */
+const src = resolve(__dirname, "src").replace(/\\/g, "/");
+const LARAVEL_SWAPS: Record<string, string> = {
+  "./store": "api/store.ts",
+  "./Auth": "api/Auth.tsx",
+  "./passkeys": "api/passkeys.ts",
+  "./firebase": "api/firebaseShim.ts",
+  "firebase/auth": "api/firebaseShim.ts",
+};
+function laravelSwaps(): Plugin {
+  return {
+    name: "laravel-swaps",
+    enforce: "pre",
+    resolveId(source, importer) {
+      if (!importer || !LARAVEL_SWAPS[source]) return null;
+      const from = importer.replace(/\\/g, "/");
+      if (!from.startsWith(src) || from.includes("/src/api/") || from.includes("/src/demo/")) return null;
+      return resolve(src, LARAVEL_SWAPS[source]);
+    },
+  };
+}
+
 export default defineConfig(({ command, mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
-  if (command === "build" && process.env.ALLOW_MISSING_FB_CONFIG !== "1") {
+  const laravel = (process.env.VITE_BACKEND ?? env.VITE_BACKEND) === "laravel";
+  if (command === "build" && !laravel && process.env.ALLOW_MISSING_FB_CONFIG !== "1") {
     const missing = REQUIRED.filter((k) => !env[k]);
     if (missing.length) {
       throw new Error(`Missing ${missing.join(", ")} in web/.env.local — the app cannot start without them.`);
     }
   }
   return {
+    define: { "import.meta.env.VITE_BACKEND": JSON.stringify(laravel ? "laravel" : "firebase") },
+    // Local development against `php artisan serve` (same origin through the proxy, as in AWS).
+    server: laravel ? { proxy: { "/api": "http://127.0.0.1:8000", "/sanctum": "http://127.0.0.1:8000" } } : undefined,
     plugins: [
+      ...(laravel ? [laravelSwaps()] : []),
       react(),
       VitePWA({
         registerType: "autoUpdate",

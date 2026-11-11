@@ -32,6 +32,9 @@
         <env name="APP_KEY" value="base64:dGVzdC1rZXktb25seS1mb3ItYXV0b21hdGVkLXRlc3Q="/>
         <env name="PASSWORD_BREACH_CHECK" value="false"/>
         <env name="ATTACHMENTS_DISK" value="local"/>
+        <env name="SANCTUM_STATEFUL_DOMAINS" value="localhost"/>
+        <env name="APP_URL" value="http://localhost"/>
+        <env name="SECURITY_RASP_MODE" value="detect"/>
         <env name="MAIL_MAILER" value="array"/>
         <env name="QUEUE_CONNECTION" value="sync"/>
         <env name="SESSION_DRIVER" value="array"/>

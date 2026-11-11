@@ -23,7 +23,7 @@ class AttachmentController extends Controller
     public static function view(object $a): array
     {
         return [
-            'id' => $a->id, 'name' => $a->name, 'path' => '', 'size' => (int) $a->size, 'contentType' => $a->content_type,
+            'id' => $a->id, 'name' => $a->name, 'path' => "/api/v1/trips/{$a->trip_id}/attachments/{$a->id}/download", 'size' => (int) $a->size, 'contentType' => $a->content_type,
             'uploadedBy' => $a->uploaded_by, 'uploadedByName' => $a->uploaded_by_name, 'createdAtMs' => self::ms($a->created_at),
         ];
     }
