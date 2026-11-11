@@ -51,7 +51,7 @@ whether sign-in must federate to the organisation's identity provider.
 | Passkeys (custom WebAuthn → custom token) | WebAuthn verified in Laravel, then a normal session | RP ID becomes the new domain: passkeys must be re-registered |
 | Custom claims host/controller/spc/admin | `users.is_host / is_controller / is_spc / is_admin`, written only by admin endpoints | Every change logged in `role_changes` |
 | Firestore rules | Policies + one `TripAccess` service; every endpoint authorises server-side | Same tests ported, incl. cross-trip denial |
-| `memberUids` recomputed by functions | `trip_members` recomputed by `MembershipService` (port of `computeAccess`) | Same reasons: Requester, roles, "On flight …", Additional access |
+| `memberUids` recomputed by functions | `trip_members` recomputed by `App\Services\Membership` (port of `computeAccess`) | Same reasons: Requester, roles, "On flight …", Additional access |
 | Firestore collections | PostgreSQL tables (section 4) | Server stamps every author and time |
 | Realtime listeners (`onSnapshot`) | Polling: messages 5 s, notifications 15 s, everything else 20 s; only while the app is visible; identical requests shared between screens; stops on 403/404 | Zscaler-safe; websockets (Reverb) can come later |
 | Offline Firestore cache | **Not carried over** (see §7, owner decision) | |
@@ -73,10 +73,9 @@ server. Health and welfare text is encrypted at the application layer.
 | `role_changes` | user_id, email, changes (json), by_user_id (no foreign keys) — **append-only** |
 | `passkeys` | user_id, credential_id, public_key, counter, transports, label, last_used_at |
 | `trip_requests` | team_name, start_date, end_date, location, requester_id, status, decline_reason, trip_id, decided_by |
-| `trips` | name, team_name, location, start/end_date, status, cyber/country risk + rationale, dip_*, requester_id, created_by (+name/email), updated_by (+name) |
-| `trip_roles` | trip_id, role_key, name, email, user_id |
-| `trip_members` | trip_id, user_id, reasons (json), added_at — **written only by MembershipService** |
-| `trip_extra_access` | trip_id, user_id or email |
+| `trips` | name, team_name, location, start/end_date, status, cyber/country risk + rationale, dip_*, roles (jsonb: role → name, email, user id), extra_access_uids / extra_access_emails (jsonb), requester_id, created_by (+name/email), updated_by (+name) |
+| `trip_members` | trip_id, user_id, name, email, reasons (json), added_at — **written only by `App\Services\Membership`** |
+| `trip_pending_emails` | trip_id, email — invitations waiting for that address to be confirmed (also Membership-only) |
 | `trip_items` | trip_id, kind (flights/hotels/cars/assets), values (jsonb, validated per `ITEM_SCHEMAS`), spc_decision, spc_rationale, spc_decided_by(+name/at), created_by(+name), updated_by |
 | `messages` | trip_id, sender_id, sender_name, text |
 | `attachments` | trip_id, name, s3_key, size, content_type, uploaded_by(+name) |
@@ -87,9 +86,9 @@ server. Health and welfare text is encrypted at the application layer.
 | `debriefs` | trip_id, went_well, could_be_better, welfare_concerns (**encrypted**), injury_refs (**encrypted**), reciprocity_*, updated_by |
 | `finance_entries` / `finance_notes` | per traveller |
 | `trip_reads` | user_id, trip_id, read_at |
-| `notifications` | Laravel database notifications (60-day prune) |
+| `app_notifications` | user_id, type, title, body, trip_id, link, read (60-day prune: `voyager:prune`) |
 | `push_subscriptions` | user_id, endpoint, keys, user_agent |
-| `audit_logs` | actor, action, subject, ip, user_agent, request_id, outcome |
+| `audit_logs` | actor_id, method, route, trip_id, status, ip, user_agent, request_id |
 | `security_events` | user_id, type, detail, ip, action_taken |
 
 ## 5. API

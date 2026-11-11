@@ -115,7 +115,8 @@ class PeopleController extends Controller
             return $this->fail(422, 'Invalid push subscription.');
         }
         // Only real browser push services (an endpoint is a URL the SERVER will call — SSRF guard).
-        if (!collect(config('services.webpush.allowed_hosts'))->contains(fn ($h) => $host === $h || str_ends_with($host, ".{$h}"))) {
+        $allowed = array_filter((array) config('services.webpush.allowed_hosts'), fn ($h) => is_string($h) && ($host === $h || str_ends_with($host, ".{$h}")));
+        if ($allowed === []) {
             return $this->fail(422, 'Unsupported push service.');
         }
         if (DB::table('push_subscriptions')->where('user_id', $u->id)->count() >= 10) {

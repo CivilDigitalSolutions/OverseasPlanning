@@ -159,10 +159,12 @@ align with the organisation's own.
 | R13 | Polling load / DoS | 2 | 3 | Polls only while visible, shared between screens; per-user rate limits; WAF; autoscaling caps | Mitigated | Dev |
 | R14 | Zscaler shared egress IPs trip IP-based limits | 3 | 3 | Limits keyed on user/email; WAF IP rule set high | Mitigated | Dev |
 | R15 | Encryption key loss or leak (field encryption) | 2 | 5 | APP_KEY in Secrets Manager, rotation via `APP_PREVIOUS_KEYS`, backups of the secret | Partially mitigated — rotation runbook in phase 4 | TODO(owner) |
+| R16 | Firebase SDK dependencies carry High advisories (`@grpc/grpc-js`) | 2 | 2 | Not shipped in the AWS bundle (verified); deleted with Firebase in MIGRATION-PLAN phase 6 | Open until decommission | Dev |
+| R17 | Container processes (supervisord, nginx master) run as root inside the container | 2 | 3 | Fargate isolation, read-only root FS planned, no shell tools | Open — harden in phase 4 (non-root user) | Dev |
 
 ## 9. The final report (structure)
 
 1. Scope and system description. 2. Method (tools in §6 with versions and dates). 3. Findings
 table from each tool (severity, location, fix or justification). 4. Risk register (§8) with
 mitigated, accepted (signed) and open risks. 5. Evidence annex (scan outputs, test run, config
-screenshots). Templates live in `docs/security/`.
+screenshots). The round-by-round report is `docs/security/REPORT.md`; how to run each tool is `docs/security/TESTING.md`.

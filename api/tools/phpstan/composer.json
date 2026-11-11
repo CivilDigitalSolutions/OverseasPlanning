@@ -1,0 +1,8 @@
+{
+    "name": "voyager/phpstan-tools",
+    "description": "Static analysis kept apart from the app's dependencies (run: composer install here, then scripts/security/larastan.sh).",
+    "require": {
+        "larastan/larastan": "^3.0"
+    },
+    "config": { "sort-packages": true }
+}

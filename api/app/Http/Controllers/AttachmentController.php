@@ -94,7 +94,7 @@ class AttachmentController extends Controller
     private function find(string $tripId, string $id): object
     {
         $a = Clean::isId($id) ? DB::table('attachments')->where('id', $id)->where('trip_id', $tripId)->first() : null;
-        abort_unless($a, 404, 'Not found.');
+        abort_unless($a !== null, 404, 'Not found.');
         return $a;
     }
 }

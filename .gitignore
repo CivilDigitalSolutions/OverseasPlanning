@@ -10,3 +10,6 @@ web/dist-demo/
 web/dist-aws/
 api/.env
 api/storage/*.key
+reports/
+api/tools/phpstan/vendor/
+api/tools/phpstan/composer.lock

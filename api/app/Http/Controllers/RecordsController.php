@@ -309,7 +309,7 @@ class RecordsController extends Controller
         $u = $this->me($request);
         $t = TripAccess::needView($u, $trip);
         $c = Clean::isId($contact) ? DB::table('contacts')->where('id', $contact)->first() : null;
-        abort_unless($c, 404, 'Not found.');
+        abort_unless($c !== null, 404, 'Not found.');
         DB::table('trip_contacts')->upsert([[
             'trip_id' => $t->id, 'contact_id' => $c->id, 'name' => $c->name, 'organisation' => $c->organisation, 'job_title' => $c->job_title, 'email' => $c->email,
             'phone' => $c->phone, 'country' => $c->country, 'trip_role' => Clean::text($request->input('tripRole'), 80), 'added_by' => $u->id,

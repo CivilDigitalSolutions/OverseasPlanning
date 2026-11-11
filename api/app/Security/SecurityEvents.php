@@ -14,7 +14,7 @@ final class SecurityEvents
 {
     public static function record(string $type, ?string $userId = null, array $detail = [], ?string $action = null, ?string $email = null): void
     {
-        $ip = request()?->ip();
+        $ip = request()->ip();
         try {
             DB::table('security_events')->insert([
                 'id' => (string) Str::ulid(), 'user_id' => $userId, 'email' => $email ? mb_substr($email, 0, 254) : null, 'type' => $type,
@@ -24,6 +24,6 @@ final class SecurityEvents
             // Never let event recording break the request; the log line below still goes out.
             Log::channel('security')->error('security event not stored', ['error' => $e->getMessage()]);
         }
-        Log::channel('security')->warning($type, ['user_id' => $userId, 'ip' => $ip, 'action' => $action, 'detail' => $detail, 'request_id' => request()?->attributes->get('request_id')]);
+        Log::channel('security')->warning($type, ['user_id' => $userId, 'ip' => $ip, 'action' => $action, 'detail' => $detail, 'request_id' => request()->attributes->get('request_id')]);
     }
 }

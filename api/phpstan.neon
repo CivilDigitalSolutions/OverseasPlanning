@@ -1,0 +1,13 @@
+includes:
+    - tools/phpstan/vendor/larastan/larastan/extension.neon
+
+parameters:
+    level: 6
+    paths:
+        - app
+        - routes
+        - config
+        - database
+    # DB::table() rows are stdClass by design (no mass-assignable models for trip data).
+    ignoreErrors:
+        - identifier: missingType.iterableValue

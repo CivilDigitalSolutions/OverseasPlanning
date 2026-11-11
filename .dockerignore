@@ -1,0 +1,10 @@
+**/node_modules
+**/vendor
+**/.env
+**/.env.*
+web/dist*
+api/storage/logs/*
+api/tools/phpstan/vendor
+reports
+functions
+.git

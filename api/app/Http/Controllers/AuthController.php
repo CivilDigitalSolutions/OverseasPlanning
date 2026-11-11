@@ -104,7 +104,7 @@ class AuthController extends Controller
         }
         $user = $email !== '' ? User::where('email', $email)->first() : null;
         // Same work and the same answer whether or not the account exists (no account discovery).
-        $ok = Hash::check($data['password'], $user?->password ?? '$2y$12$Nkr0Sl4VBOBAs7MStcdr6uOV7g8DsHKAtkMAXB3N1Q5HhcT064IaS');
+        $ok = Hash::check($data['password'], $user->password ?? '$2y$12$Nkr0Sl4VBOBAs7MStcdr6uOV7g8DsHKAtkMAXB3N1Q5HhcT064IaS');
         if (!$user || !$ok || $user->password === null) {
             RateLimiter::hit($key, 900);
             if (RateLimiter::attempts($key) === 5) {

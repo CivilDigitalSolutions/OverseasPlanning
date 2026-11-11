@@ -129,7 +129,7 @@ class ItemController extends Controller
     private function find(string $tripId, string $kind, string $id): object
     {
         $item = Clean::isId($id) ? DB::table('trip_items')->where('id', $id)->where('trip_id', $tripId)->where('kind', $kind)->first() : null;
-        abort_unless($item, 404, 'Not found.');
+        abort_unless($item !== null, 404, 'Not found.');
         return $item;
     }
 

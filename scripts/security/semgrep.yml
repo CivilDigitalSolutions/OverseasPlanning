@@ -1,0 +1,40 @@
+# Project rules on top of the Semgrep registry packs (scripts/security/sast.sh).
+rules:
+  - id: voyager-no-raw-sql
+    languages: [php]
+    severity: ERROR
+    message: Raw SQL with interpolation. Use the query builder with bindings.
+    patterns:
+      - pattern-either:
+          - pattern: DB::raw("...$X...")
+          - pattern: DB::select("...$X...")
+          - pattern: DB::statement("...$X...")
+          - pattern: $Q->whereRaw("...$X...")
+  - id: voyager-trip-route-needs-access-check
+    languages: [php]
+    severity: ERROR
+    message: A controller action with a $trip parameter must call TripAccess::need*() (SECURITY-PLAN T6).
+    patterns:
+      - pattern: |
+          public function $F(..., string $trip, ...): $R { ... }
+      - pattern-not: |
+          public function $F(..., string $trip, ...): $R { ... TripAccess::$NEED(...); ... }
+      - pattern-not: |
+          public function $F(..., string $trip, ...): $R { ... $T = TripAccess::$NEED(...); ... }
+  - id: voyager-no-mass-assigned-roles
+    languages: [php]
+    severity: ERROR
+    message: Role profiles are set with forceFill by administrator code only (SECURITY-PLAN T4).
+    pattern-either:
+      - pattern: User::create([..., 'is_admin' => $X, ...])
+      - pattern: User::create([..., 'is_host' => $X, ...])
+      - pattern: $U->fill([..., 'is_admin' => $X, ...])
+  - id: voyager-no-local-storage-of-data
+    languages: [typescript]
+    severity: WARNING
+    message: Do not keep trip or personal data in browser storage (SECURITY-PLAN §6.3).
+    paths: { include: ["web/src/api/"] }
+    pattern-either:
+      - pattern: localStorage.setItem(...)
+      - pattern: sessionStorage.setItem(...)
+      - pattern: indexedDB.open(...)

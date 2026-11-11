@@ -1,0 +1,69 @@
+# Continuous assurance (Secure by Design: "embed continuous assurance"). Runs on every push and
+# pull request; its job outputs are the evidence for the security report (docs/security/).
+name: security
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+
+jobs:
+  api:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env: { POSTGRES_USER: voyager, POSTGRES_PASSWORD: voyager, POSTGRES_DB: voyager_test }
+        ports: ["5432:5432"]
+        options: --health-cmd pg_isready --health-interval 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with: { php-version: "8.3", extensions: pdo_pgsql, gmp, coverage: none }
+      - run: composer install --no-interaction --prefer-dist
+        working-directory: api
+      - name: Tests (incl. cross-trip denial for every resource)
+        run: php artisan test
+        working-directory: api
+      - run: composer audit --no-dev
+        working-directory: api
+      - name: Larastan
+        run: (cd tools/phpstan && composer install --no-interaction) && php -d memory_limit=1G -d auto_prepend_file=tools/phpstan/vendor/autoload.php tools/phpstan/vendor/bin/phpstan analyse --no-progress
+        working-directory: api
+
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "22" }
+      - run: npm ci
+        working-directory: web
+      - run: npm test && npm run build:aws
+        working-directory: web
+      - name: Dependency audit (shipped packages)
+        run: scripts/security/deps.sh
+
+  sast:
+    runs-on: ubuntu-latest
+    container: semgrep/semgrep
+    steps:
+      - uses: actions/checkout@v4
+      - run: semgrep scan --config scripts/security/semgrep.yml --config p/php --config p/typescript --config p/react --config p/secrets --metrics=off --error api/app api/routes api/config web/src
+
+  secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - run: docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:latest git /repo --redact
+
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t voyager:ci .
+      - name: Trivy image + config scan
+        run: |
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest image --severity HIGH,CRITICAL --exit-code 1 --ignore-unfixed voyager:ci
+          docker run --rm -v "$PWD:/src" aquasec/trivy:latest config --exit-code 0 /src

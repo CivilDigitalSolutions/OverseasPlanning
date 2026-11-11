@@ -75,7 +75,7 @@ final class ItemSchemas
      */
     public static function check(string $kind, mixed $raw): array
     {
-        $fields = self::FIELDS[$kind] ?? null;
+        $fields = self::fields($kind);
         if ($fields === null) {
             return [[], ['kind' => 'Unknown item type.']];
         }
@@ -158,6 +158,12 @@ final class ItemSchemas
             }
         }
         return [$out, $errors];
+    }
+
+    /** @return array<string, array{0: string, 1: mixed, 2: bool}>|null */
+    private static function fields(string $kind): ?array
+    {
+        return self::FIELDS[$kind] ?? null;
     }
 
     /** @return array{0: list<array<string, string>>, 1: ?string} */

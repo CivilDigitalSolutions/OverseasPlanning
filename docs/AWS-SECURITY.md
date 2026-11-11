@@ -1,6 +1,7 @@
 # AWS move and security assurance — decisions and open items
 
-Status: **planning (2026-11-11)**. Nothing here is built yet; the app still runs on Firebase.
+Status: **API and PWA client built (2026-11-11), not deployed.** Plan: `docs/MIGRATION-PLAN.md`;
+security: `docs/SECURITY-PLAN.md`; deployment order: `docs/DEPLOY-AWS.md`. The live app still runs on Firebase.
 Items marked **TODO(owner)** are waiting on the owner — do not invent answers.
 
 ## Decisions (owner, 2026-11-11)
