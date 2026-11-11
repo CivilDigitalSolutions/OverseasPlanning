@@ -1,2 +1,20 @@
-/** The app icon as a data URI, so it renders without a network fetch (and inside the single-file demo). */
-export const ICON = "data:image/svg+xml," + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><rect width="512" height="512" rx="112" fill="#13294B"/><circle cx="256" cy="256" r="150" fill="none" stroke="#5FA8E8" stroke-width="22"/><ellipse cx="256" cy="256" rx="62" ry="150" fill="none" stroke="#5FA8E8" stroke-width="16"/><line x1="106" y1="256" x2="406" y2="256" stroke="#5FA8E8" stroke-width="16"/><path d="M150 338 L362 174 L378 196 L300 262 L318 360 L296 372 L262 290 L196 340 L198 372 L180 380 L168 346 Z" fill="#F2A33A"/></svg>`);
+/**
+ * Voyager — Trip Manager brand (owner, 2026-11-11). Artwork: emblem (compass-globe with a plane)
+ * and the VOYAGER / TRIP MANAGER wordmark, extracted from the owner's brand board as transparent
+ * PNGs in src/assets (black and white versions). Icons in public/icons are generated from the same
+ * emblem — see docs/BRAND.md. Imported so they are bundled (and inlined in the single-file demo).
+ */
+import appIcon from "./assets/app-icon-128.png";
+import emblemBlack from "./assets/emblem-black.png";
+import emblemWhite from "./assets/emblem-white.png";
+import wordmarkBlack from "./assets/wordmark-black.png";
+import wordmarkWhite from "./assets/wordmark-white.png";
+
+export const APP_NAME = "Voyager";
+export const APP_FULL_NAME = "Voyager Trip Manager";
+/** White emblem on a black rounded square: the app icon, for small in-app uses. */
+export const ICON = appIcon;
+export const EMBLEM_BLACK = emblemBlack;
+export const EMBLEM_WHITE = emblemWhite;
+export const WORDMARK_BLACK = wordmarkBlack;
+export const WORDMARK_WHITE = wordmarkWhite;

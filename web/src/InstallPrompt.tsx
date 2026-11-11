@@ -38,7 +38,7 @@ export function InstallPrompt() {
     <div className="install" role="dialog" aria-label="Install app">
       <img src="/icons/icon-192.png" alt="" />
       <div className="grow">
-        <strong>Install Overseas Planning</strong>
+        <strong>Install Voyager</strong>
         {ios && <div className="small">Tap <ShareGlyph /> then <b>Add to Home Screen</b></div>}
       </div>
       {!ios && evt && (

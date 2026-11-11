@@ -1,4 +1,6 @@
-# Overseas Planning — Specification
+# Voyager Trip Manager — Specification
+
+Renamed from "Overseas Planning" on 2026-11-11 (owner); brand assets and icons: `docs/BRAND.md`.
 
 Status: **first build (2026-11-09)**. Sections marked **TODO(owner)** are deliberately left blank or
 provisional: they need a decision the build could not make.

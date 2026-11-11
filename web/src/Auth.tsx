@@ -5,6 +5,7 @@ import {
 import { doc, serverTimestamp, setDoc } from "firebase/firestore";
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { Checkbox, Icon, Link, Notice, TextField, navigate } from "./components";
+import { EMBLEM_BLACK, WORDMARK_BLACK } from "./brand";
 import { auth, db } from "./firebase";
 import { EMAIL_RE } from "./model";
 import { passkeysSupported, signInWithPasskey } from "./passkeys";
@@ -45,7 +46,11 @@ function AuthFrame({ title, children }: { title: string; children: ReactNode }) 
   return (
     <div className="auth-wrap">
       <div className="card auth-card">
-        <div className="auth-logo"><img src="/icons/icon-192.png" alt="" /><h1>{title}</h1></div>
+        <div className="auth-logo">
+          <img src={EMBLEM_BLACK} alt="" className="auth-emblem" />
+          <img src={WORDMARK_BLACK} alt="Voyager Trip Manager" className="auth-wordmark" />
+        </div>
+        <h1 className="auth-title">{title}</h1>
         {children}
       </div>
     </div>

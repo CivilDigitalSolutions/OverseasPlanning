@@ -5,7 +5,7 @@
  */
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { Checkbox, Icon, Link, Modal, Notice, TextField, navigate } from "../components";
-import { ICON } from "../brand";
+import { EMBLEM_BLACK, WORDMARK_BLACK } from "../brand";
 import { EMAIL_RE } from "../model";
 import { be } from "./backend";
 import { accountPath, claimInvitedAccount, recordAgreement, setSignedIn, syncPendingAccess, toAccount, type Session } from "./store";
@@ -17,7 +17,11 @@ function AuthFrame({ title, children }: { title: string; children: ReactNode }) 
   return (
     <div className="auth-wrap">
       <div className="card auth-card">
-        <div className="auth-logo"><img src={ICON} alt="" /><h1>{title}</h1></div>
+        <div className="auth-logo">
+          <img src={EMBLEM_BLACK} alt="" className="auth-emblem" />
+          <img src={WORDMARK_BLACK} alt="Voyager Trip Manager" className="auth-wordmark" />
+        </div>
+        <h1 className="auth-title">{title}</h1>
         {children}
       </div>
     </div>

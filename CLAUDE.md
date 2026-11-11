@@ -1,4 +1,4 @@
-# CLAUDE.md — Overseas Planning
+# CLAUDE.md — Voyager Trip Manager (repo: OverseasPlanning)
 
 Spec: `docs/SPEC.md` (read the relevant section first; update it in the same change when behaviour
 or the data model changes; TODO(owner) sections are decisions still to be made — leave them blank

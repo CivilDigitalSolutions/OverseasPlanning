@@ -2,6 +2,8 @@
   --bg: #F4F6FA;
   --surface: #FFFFFF;
   --ink: #13294B;
+  /* Voyager brand (owner, 2026-11-11): black and white artwork */
+  --brand-black: #000000;
   --ink-2: #4A5A75;
   --line: #DCE2EC;
   --primary: #1F5FBF;
@@ -36,11 +38,14 @@ button { font: inherit; }
 /* ---- shell ---- */
 .app { display: flex; flex-direction: column; min-height: 100dvh; }
 .topbar {
-  position: sticky; top: 0; z-index: 20; background: var(--ink); color: #fff;
+  position: sticky; top: 0; z-index: 20; background: var(--brand-black); color: #fff;
   display: flex; align-items: center; gap: 12px; padding: 10px 16px; padding-top: max(10px, env(safe-area-inset-top));
 }
 .topbar .brand { display: flex; align-items: center; gap: 8px; font-weight: 700; color: #fff; text-decoration: none; }
-.topbar .brand img { width: 28px; height: 28px; border-radius: 7px; }
+.topbar .brand { gap: 8px; min-width: 0; }
+.topbar .brand .brand-emblem { height: 32px; width: auto; }
+.topbar .brand .brand-wordmark { height: 26px; width: auto; }
+@media (max-width: 360px) { .topbar .brand .brand-wordmark { height: 20px; } }
 .topbar .spacer { flex: 1; }
 .topbar button { color: #fff; }
 .nav {
@@ -130,8 +135,12 @@ input[aria-invalid="true"], select[aria-invalid="true"], textarea[aria-invalid="
 /* ---- auth ---- */
 .auth-wrap { min-height: 100dvh; display: grid; place-items: center; padding: 20px 16px; }
 .auth-card { width: 100%; max-width: 420px; }
-.auth-logo { display: flex; align-items: center; gap: 10px; justify-content: center; margin-bottom: 18px; }
-.auth-logo img { width: 44px; height: 44px; border-radius: 11px; }
+.auth-logo { display: grid; justify-items: center; gap: 10px; margin: 4px 0 6px; }
+.auth-logo .auth-emblem { height: 76px; width: auto; }
+.auth-logo .auth-wordmark { height: 46px; width: auto; max-width: 100%; }
+.auth-title { text-align: center; font-size: 1.15rem; margin-bottom: 14px; }
+.splash { min-height: 100dvh; display: grid; place-content: center; justify-items: center; gap: 14px; background: #000; }
+.splash img:first-child { height: 96px; } .splash img:last-child { height: 48px; }
 .divider { display: flex; align-items: center; gap: 10px; color: var(--ink-2); font-size: .82rem; margin: 4px 0; }
 .divider::before, .divider::after { content: ""; flex: 1; height: 1px; background: var(--line); }
 
@@ -151,7 +160,7 @@ input[aria-invalid="true"], select[aria-invalid="true"], textarea[aria-invalid="
 /* ---- install prompt ---- */
 .install {
   position: fixed; left: 12px; right: 12px; bottom: max(12px, env(safe-area-inset-bottom)); z-index: 40;
-  background: var(--ink); color: #fff; border-radius: 14px; padding: 12px 14px; display: flex; gap: 12px; align-items: center;
+  background: var(--brand-black); color: #fff; border-radius: 14px; padding: 12px 14px; display: flex; gap: 12px; align-items: center;
   box-shadow: 0 8px 24px rgba(0, 0, 0, .25); max-width: 520px; margin: 0 auto;
 }
 .install img { width: 40px; height: 40px; border-radius: 10px; }
@@ -219,3 +228,11 @@ html.kb-open main, html.kb-open .modal { padding-bottom: 50vh; }
   max-width: 520px; margin: 0 auto; display: flex; gap: 8px; align-items: center; background: var(--ink); color: #fff; border-radius: 14px; padding: 10px 10px 10px 14px; box-shadow: 0 8px 24px rgba(0,0,0,.25); }
 .toast-body { flex: 1; min-width: 0; display: grid; gap: 2px; text-align: left; background: none; border: 0; color: inherit; font: inherit; cursor: pointer; padding: 0; overflow-wrap: anywhere; }
 .toast .icon-btn { color: #fff; }
+
+/* Narrow phones: keep the wordmark clear — role badges move off the top bar (they're on Account). */
+@media (max-width: 480px) {
+  .topbar { gap: 6px; padding-left: 12px; padding-right: 8px; }
+  .topbar > .badge { display: none; }
+  .topbar .icon-btn { padding: 6px; }
+}
+.topbar .brand { flex-shrink: 1; overflow: hidden; }

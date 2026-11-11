@@ -1,5 +1,5 @@
 /**
- * Overseas Planning — domain model. Pure TypeScript with no Firebase imports, so `node --test`
+ * Voyager Trip Manager — domain model. Pure TypeScript with no Firebase imports, so `node --test`
  * can exercise it. The Firestore shapes are documented in docs/SPEC.md §4; firestore.rules
  * validates the same field lists — keep ITEM_SCHEMAS and the rules' allowlists in step.
  */

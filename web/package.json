@@ -8,7 +8,7 @@
     "build": "tsc --noEmit && tsc --noEmit -p tsconfig.sw.json && vite build",
     "preview": "vite preview",
     "test": "node --test test/*.test.ts",
-    "icons": "node scripts/make-icons.mjs",
+    "icons": "cd .. && python3 web/scripts/make-brand.py web/public/icons web/src/assets",
     "build:demo": "tsc --noEmit && vite build --config vite.demo.config.ts"
   },
   "dependencies": {

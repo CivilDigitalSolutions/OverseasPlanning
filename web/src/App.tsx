@@ -2,7 +2,7 @@ import { signOut } from "firebase/auth";
 import { useEffect } from "react";
 import { Account } from "./Account";
 import { AdminAccounts } from "./AdminAccounts";
-import { ICON } from "./brand";
+import { EMBLEM_WHITE, WORDMARK_WHITE } from "./brand";
 import { AuthAction, ForgotPassword, SignIn, SignUp, VerifyEmail } from "./Auth";
 import { Icon, Link, Loading, usePath } from "./components";
 import { auth } from "./firebase";
@@ -78,7 +78,10 @@ function Shell({ session, pathname }: { session: Session; pathname: string }) {
   return (
     <div className="app">
       <header className="topbar">
-        <Link to="/" className="brand"><img src={ICON} alt="" /> Overseas Planning</Link>
+        <Link to="/" className="brand" aria-label="Voyager Trip Manager — home">
+          <img src={EMBLEM_WHITE} alt="" className="brand-emblem" />
+          <img src={WORDMARK_WHITE} alt="" className="brand-wordmark" />
+        </Link>
         <span className="spacer" />
         {session.isHost && <span className="badge info">HOST</span>}
         {session.isController && <span className="badge info">Controller</span>}

@@ -11,7 +11,7 @@ import("./App")
   .catch((e: unknown) => {
     root.render(
       <div style={{ padding: 24, fontFamily: "system-ui", color: "#9B1C1C" }}>
-        <h1>Overseas Planning could not start</h1>
+        <h1>Voyager could not start</h1>
         <p>{e instanceof Error ? e.message : String(e)}</p>
       </div>,
     );

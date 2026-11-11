@@ -3,7 +3,7 @@ import { useEffect, useState, type ComponentType } from "react";
 import "../theme.css";
 import "./demo.css";
 import { initBackend, type Backend } from "./backend";
-import { ICON } from "../brand";
+import { EMBLEM_WHITE, WORDMARK_WHITE } from "../brand";
 import { useAccount, accountPath } from "./store";
 import { be } from "./backend";
 
@@ -40,7 +40,7 @@ function Root() {
       setReady({ mode: b.mode });
     });
   }, []);
-  if (!ready || !App) return <div className="empty" aria-busy="true"><img src={ICON} alt="" width={48} height={48} /><div>Loading…</div></div>;
+  if (!ready || !App) return <div className="splash" aria-busy="true"><img src={EMBLEM_WHITE} alt="" /><img src={WORDMARK_WHITE} alt="Voyager Trip Manager" /></div>;
   return <><DemoStrip mode={ready.mode} /><App /></>;
 }
 

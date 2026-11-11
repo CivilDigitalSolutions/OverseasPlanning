@@ -1,5 +1,6 @@
-# Overseas Planning
+# Voyager Trip Manager
 
+(Repository: OverseasPlanning.) 
 Installable web app (PWA) for requesting, planning, running and debriefing overseas trips.
 React + Vite + TypeScript on Firebase (Auth, Firestore, Storage, Cloud Functions).
 

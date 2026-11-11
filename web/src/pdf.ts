@@ -3,6 +3,7 @@ import {
   FLIGHT_DECISION_LABEL, ITEM_SCHEMAS, REQUEST_STATUS_LABEL, displayValue, TRIP_ROLES, TRIP_STATUSES, dateRange, financeTotals, formatBytes, formatDate, formatMoney,
   kindLabel, type ItemSchema,
 } from "./model";
+import { EMBLEM_BLACK } from "./brand";
 import { saveFile } from "./download";
 import { loadTripSnapshot, type TripSnapshot } from "./store";
 
@@ -15,7 +16,7 @@ import { loadTripSnapshot, type TripSnapshot } from "./store";
 export async function exportTripPdf(tripId: string) {
   const [{ jsPDF }, { default: autoTable }, snap] = await Promise.all([import("jspdf"), import("jspdf-autotable"), loadTripSnapshot(tripId)]);
   const pdf = new jsPDF({ unit: "pt", format: "a4" });
-  buildPdf(pdf, autoTable as unknown as AutoTable, snap);
+  buildPdf(pdf, autoTable as unknown as AutoTable, snap, await dataUrl(EMBLEM_BLACK).catch(() => null));
   const name = (snap.trip.name || snap.trip.teamName || "trip").replace(/[^\w\- ]+/g, "").trim().replace(/\s+/g, "-");
   await saveFile(`${name}-${new Date().toISOString().slice(0, 10)}.pdf`, pdf.output("blob"));
 }
@@ -24,7 +25,14 @@ type AutoTable = (doc: JsPdf, opts: Record<string, unknown>) => void;
 const M = 40;
 const when = (ms: number) => (ms ? new Date(ms).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "");
 
-function buildPdf(pdf: JsPdf, autoTable: AutoTable, s: TripSnapshot) {
+/** The emblem as a data URL for jsPDF (bundled asset URL → base64). */
+async function dataUrl(url: string): Promise<string> {
+  if (url.startsWith("data:")) return url;
+  const blob = await (await fetch(url)).blob();
+  return new Promise((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(String(r.result)); r.onerror = reject; r.readAsDataURL(blob); });
+}
+
+function buildPdf(pdf: JsPdf, autoTable: AutoTable, s: TripSnapshot, emblem: string | null) {
   const { trip } = s;
   const width = pdf.internal.pageSize.getWidth();
   let y = M;
@@ -49,6 +57,9 @@ function buildPdf(pdf: JsPdf, autoTable: AutoTable, s: TripSnapshot) {
     y += 4;
   };
 
+  // Brand header: emblem + VOYAGER TRIP MANAGER, top right of the first page.
+  if (emblem) pdf.addImage(emblem, "PNG", width - M - 40, M - 14, 40, 37);
+  pdf.setFont("helvetica", "bold").setFontSize(8).setTextColor(0).text("VOYAGER TRIP MANAGER", width - M - 48, M + 8, { align: "right" });
   // Title
   pdf.setFont("helvetica", "bold").setFontSize(18).setTextColor(19, 41, 75).text(trip.name || trip.teamName, M, y + 8); y += 26;
   pdf.setFont("helvetica", "normal").setFontSize(10).setTextColor(80)
@@ -139,6 +150,6 @@ function buildPdf(pdf: JsPdf, autoTable: AutoTable, s: TripSnapshot) {
   for (let i = 1; i <= pages; i++) {
     pdf.setPage(i);
     pdf.setFont("helvetica", "normal").setFontSize(8).setTextColor(120)
-      .text(`${trip.name || trip.teamName} — page ${i} of ${pages}`, width - M, pdf.internal.pageSize.getHeight() - 20, { align: "right" });
+      .text(`Voyager Trip Manager · ${trip.name || trip.teamName} — page ${i} of ${pages}`, width - M, pdf.internal.pageSize.getHeight() - 20, { align: "right" });
   }
 }
