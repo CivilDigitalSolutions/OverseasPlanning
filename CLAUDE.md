@@ -2,7 +2,8 @@
 
 Spec: `docs/SPEC.md` (read the relevant section first; update it in the same change when behaviour
 or the data model changes; TODO(owner) sections are decisions still to be made — leave them blank
-rather than inventing answers). Setup: `docs/SETUP.md`.
+rather than inventing answers). Setup: `docs/SETUP.md`. Planned AWS/Laravel move, security
+assurance decisions and open AWS questions: `docs/AWS-SECURITY.md`.
 
 ## Rules
 1. Never weaken `firestore.rules` / `storage.rules` to make a feature work; fix the data model or
