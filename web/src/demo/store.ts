@@ -8,7 +8,7 @@ import {
   liveTrips, todayIso,
   EMPTY_DEBRIEF, MAX_ATTACHMENT_BYTES, PRIVACY_VERSION, REQUEST_KINDS, TERMS_VERSION,
   type ChatMessage, type Contact, type ContactInput, type TripContact, type Debrief, type FinanceEntry, type RequestInput, type RequestKind, type RoleHolder, type TlRequest,
-  type TlRequestStatus, type Trip, type TripRequest, type TripRoleKey, type TripStatus, type VaccinationDeclaration, type VaccineRecord,
+  toRequestStatus, type Trip, type TripRequest, type TripRoleKey, type TripStatus, type VaccinationDeclaration, type VaccineRecord,
 } from "../model";
 import { DELETE, be, type QuerySpec, type Snap } from "./backend";
 import { computeAccess, flightLabel, type AccessInput, type Person } from "../membership";
@@ -419,13 +419,11 @@ export async function deleteAttachment(tripId: string, a: Attachment) {
 
 const toTl = (s: Snap): TlRequest => {
   const v = s.data;
-  const st = ["pending", "approved", "rejected", "completed"].includes(v.status as string) ? v.status : "pending";
   return {
     id: s.id, kind: (REQUEST_KINDS.some((k) => k.key === v.kind) ? v.kind : "resource") as RequestKind,
     title: str(v.title), details: str(v.details), quantity: num(v.quantity), amount: num(v.amount), currency: str(v.currency),
     neededBy: str(v.neededBy), createdBy: str(v.createdBy), createdByName: str(v.createdByName), createdAtMs: ms(v.createdAt),
-    status: st as TlRequestStatus, decidedByName: str(v.decidedByName), decidedAtMs: ms(v.decidedAt), decisionNote: str(v.decisionNote),
-    completedByName: str(v.completedByName), completedAtMs: ms(v.completedAt), response: str(v.response),
+    status: toRequestStatus(v.status), decidedByName: str(v.decidedByName), decidedAtMs: ms(v.decidedAt), decisionNote: str(v.decisionNote),
   };
 };
 export const useTlRequests = (tripId: string) => useColl(`trips/${tripId}/tlRequests`, {}, toTl, tripId);
@@ -441,12 +439,9 @@ export const addTlRequest = (s: Session, tripId: string, r: TlRequestInput) =>
   });
 export const decideTlRequest = (s: Session, tripId: string, id: string, approve: boolean, note: string) =>
   be().patch(`trips/${tripId}/tlRequests/${id}`, { status: approve ? "approved" : "rejected", decidedBy: s.uid, decidedByName: s.name.slice(0, 80), decidedAt: now(), decisionNote: note.trim().slice(0, 1000) });
-export const completeTlRequest = (s: Session, tripId: string, id: string, response: string) =>
-  be().patch(`trips/${tripId}/tlRequests/${id}`, { status: "completed", completedBy: s.uid, completedByName: s.name.slice(0, 80), completedAt: now(), response: response.trim().slice(0, 1000) });
 export const resubmitTlRequest = (tripId: string, id: string) =>
   be().patch(`trips/${tripId}/tlRequests/${id}`, { status: "pending", decidedBy: DELETE, decidedByName: DELETE, decidedAt: DELETE, decisionNote: DELETE });
 export const deleteTlRequest = (tripId: string, id: string) => be().del(`trips/${tripId}/tlRequests/${id}`);
-
 
 // ---- Request summaries (Team Leader / SPC) --------------------------------------------------------
 

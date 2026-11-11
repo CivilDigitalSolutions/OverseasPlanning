@@ -179,17 +179,17 @@ describe("requests to the Team Leader (approval)", () => {
     await assertFails(updateDoc(doc(as("spc2"), "trips", OTHER, "tlRequests", "q1"), decide("spc2"))); // cross-trip
     await assertSucceeds(updateDoc(doc(spc(), "trips", TRIP, "tlRequests", "q1"), decide("spc")));
   });
-  it("16 completion only after approval; resubmit only by creator after rejection", async () => {
-    const complete = { status: "completed", completedBy: "lead", completedByName: "L", completedAt: serverTimestamp() };
-    await assertFails(updateDoc(doc(leader(), "trips", TRIP, "tlRequests", "q1"), complete)); // still pending
-    await assertSucceeds(updateDoc(doc(spc(), "trips", TRIP, "tlRequests", "q1"), { status: "rejected", decidedBy: "spc", decidedAt: serverTimestamp(), decisionNote: "No" }));
+  it("16 approval is final; resubmit only by the creator after rejection", async () => {
+    const decide = (uid, status) => ({ status, decidedBy: uid, decidedByName: "x", decidedAt: serverTimestamp() });
+    await assertSucceeds(updateDoc(doc(spc(), "trips", TRIP, "tlRequests", "q1"), { ...decide("spc", "rejected"), decisionNote: "No" }));
     await assertFails(updateDoc(doc(leader(), "trips", TRIP, "tlRequests", "q1"), { status: "pending", decidedBy: deleteField(), decidedAt: deleteField(), decisionNote: deleteField() }));
-    await assertSucceeds(updateDoc(doc(member(), "trips", TRIP, "tlRequests", "q1"), { status: "pending", decidedBy: deleteField(), decidedAt: deleteField(), decisionNote: deleteField() }));
-    await assertFails(updateDoc(doc(leader(), "trips", TRIP, "tlRequests", "q1"), { status: "approved", decidedBy: "lead", decidedAt: serverTimestamp() }));
-    await assertSucceeds(updateDoc(doc(spc(), "trips", TRIP, "tlRequests", "q1"), { status: "approved", decidedBy: "spc", decidedAt: serverTimestamp() }));
-    await assertFails(updateDoc(doc(leader(), "trips", TRIP, "tlRequests", "q1"), complete));
-    await assertFails(updateDoc(doc(host(), "trips", TRIP, "tlRequests", "q1"), { ...complete, completedBy: "host" }));
-    await assertSucceeds(updateDoc(doc(spc(), "trips", TRIP, "tlRequests", "q1"), { ...complete, completedBy: "spc" }));
+    await assertSucceeds(updateDoc(doc(member(), "trips", TRIP, "tlRequests", "q1"), { status: "pending", decidedBy: deleteField(), decidedByName: deleteField(), decidedAt: deleteField(), decisionNote: deleteField() }));
+    await assertFails(updateDoc(doc(leader(), "trips", TRIP, "tlRequests", "q1"), decide("lead", "approved")));
+    await assertSucceeds(updateDoc(doc(spc(), "trips", TRIP, "tlRequests", "q1"), decide("spc", "approved")));
+    // Approved is the end: no completion step, no re-deciding, no resubmitting.
+    await assertFails(updateDoc(doc(spc(), "trips", TRIP, "tlRequests", "q1"), { status: "completed", completedBy: "spc", completedAt: serverTimestamp() }));
+    await assertFails(updateDoc(doc(spc(), "trips", TRIP, "tlRequests", "q1"), decide("spc", "rejected")));
+    await assertFails(updateDoc(doc(member(), "trips", TRIP, "tlRequests", "q1"), { status: "pending", decidedBy: deleteField(), decidedAt: deleteField() }));
   });
 });
 

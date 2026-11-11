@@ -83,7 +83,8 @@ A mobile-first, installable web app (PWA) to request, plan, run and debrief over
    risk levels) **and the team messages**; planning is done from the full trip screen.
    A trip can therefore appear in both Planning and Live trips while it is close to departure.
 6. **Planning keeps every trip until it is archived** (owner, 2026-11-11), including trips already
-   marked Live (shown with a "Live" badge), so planning can continue during the trip.
+   marked Live (shown with a "Live" badge), so planning can continue during the trip. A standard
+   user sees the trips they are part of; **HOST sees every trip** in Planning.
 
 Access (owner decision 2026-11-10): **a trip is visible only to the people on it** —
 the **requester**, everyone named in a **role**, everyone **booked on a flight**, and anyone given
@@ -188,7 +189,10 @@ Assets · Messages · Attachments · Vaccinations · Contacts · Access · Debri
     **editable by anyone on the trip** (owner, 2026-11-10), each showing who saved it last and when
     (`trips/{id}/summaries/{teamLeader|spc}`).
   - (2026-11-10: "the SPC" below means the trip's named SPC **or anyone with the SPC role profile**.)
-  - Workflow: **Awaiting approval → Approved / Rejected → Completed**. **Only the trip's SPC
+  - **2026-11-11: approval is the end of the process** — Awaiting approval → **Approved** (final) or
+    **Rejected** (the creator may resubmit). The separate "Completed" step was removed; requests
+    stored as "completed" earlier read as Approved. The text below describing completion is superseded.
+  - Workflow (original): **Awaiting approval → Approved / Rejected → Completed**. **Only the trip's SPC
     approves or rejects** (with a note) — not HOST, not the Team Leader (owner decision
     2026-11-10; enforced in `firestore.rules` `isSpc`). The SPC also marks an
     approved request completed (with an outcome).

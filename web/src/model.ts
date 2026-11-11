@@ -478,16 +478,18 @@ export type RequestKind = (typeof REQUEST_KINDS)[number]["key"];
 export const kindLabel = (k: string) => REQUEST_KINDS.find((x) => x.key === k)?.label ?? "Request";
 
 /**
- * pending → approved | rejected → completed once fulfilled. Every step is authorised by the
- * trip's SPC ONLY (owner decision 2026-11-10).
- * A rejected request can be resubmitted by its creator (back to pending).
+ * pending → approved | rejected. APPROVAL IS THE END OF THE PROCESS (owner, 2026-11-11): there is
+ * no separate "completed" step. A rejected request can be resubmitted by its creator. Every decision
+ * is made by an SPC (the trip's named SPC or an SPC-profile holder on the trip).
  */
-export type TlRequestStatus = "pending" | "approved" | "rejected" | "completed";
+export type TlRequestStatus = "pending" | "approved" | "rejected";
 export const REQUEST_STATUS_LABEL: Record<TlRequestStatus, string> = {
-  pending: "Awaiting approval", approved: "Approved", rejected: "Rejected", completed: "Completed",
+  pending: "Awaiting approval", approved: "Approved", rejected: "Rejected",
 };
-export const requestTone = (st: TlRequestStatus) =>
-  st === "pending" ? "warn" : st === "approved" ? "info" : st === "rejected" ? "bad" : "ok";
+export const requestTone = (st: TlRequestStatus) => (st === "pending" ? "warn" : st === "approved" ? "ok" : "bad");
+/** Stored status → TlRequestStatus. Requests marked "completed" under the old flow read as approved. */
+export const toRequestStatus = (v: unknown): TlRequestStatus =>
+  v === "approved" || v === "completed" ? "approved" : v === "rejected" ? "rejected" : "pending";
 
 export interface TlRequest {
   id: string;
@@ -505,9 +507,6 @@ export interface TlRequest {
   decidedByName: string;
   decidedAtMs: number;
   decisionNote: string;
-  completedByName: string;
-  completedAtMs: number;
-  response: string;
 }
 
 /** Validates the request form. Quantity for people/assets, amount + currency for cash. */
@@ -527,17 +526,16 @@ export function validateTlRequest(r: { kind: string; title: string; quantity: st
   return e;
 }
 
-/** Needs action from the Team Leader: waiting for a decision, or approved but not yet done. */
-export const openCount = (rs: TlRequest[]) => rs.filter((r) => r.status === "pending" || r.status === "approved").length;
-export const pendingCount = (rs: TlRequest[]) => rs.filter((r) => r.status === "pending").length;
+/** Needs action: requests still awaiting an SPC decision. */
+export const openCount = (rs: TlRequest[]) => rs.filter((r) => r.status === "pending").length;
+export const pendingCount = openCount;
 
-const STATUS_ORDER: Record<TlRequestStatus, number> = { pending: 0, approved: 1, rejected: 2, completed: 3 };
-/** Pending first (oldest first, so nothing waits forever), then approved, rejected, completed (newest first). */
+const STATUS_ORDER: Record<TlRequestStatus, number> = { pending: 0, approved: 1, rejected: 2 };
+/** Awaiting approval first (oldest first, so nothing waits forever), then decided ones, newest decision first. */
 export const sortTlRequests = (rs: TlRequest[]) =>
   [...rs].sort((a, b) =>
     a.status !== b.status ? STATUS_ORDER[a.status] - STATUS_ORDER[b.status]
-      : a.status === "pending" || a.status === "approved" ? a.createdAtMs - b.createdAtMs
-        : Math.max(b.completedAtMs, b.decidedAtMs) - Math.max(a.completedAtMs, a.decidedAtMs));
+      : a.status === "pending" ? a.createdAtMs - b.createdAtMs : b.decidedAtMs - a.decidedAtMs);
 
 // ---- Vaccination declarations ------------------------------------------------------------------
 

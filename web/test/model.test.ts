@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   ITEM_SCHEMAS, addPerson, byClass, dayNightFor, formatDuration, parseDuration, cleanInjuryRefs, displayValue, cleanItem, cleanVaccines, financeTotals, firstUnreadIndex, openCount, parseAmount, safeFileName,
-  sortTlRequests, startsRun, statusHint, tripMatches, tripsFor, validateRequest, validateTlRequest,
+  sortTlRequests, toRequestStatus, startsRun, statusHint, tripMatches, tripsFor, validateRequest, validateTlRequest,
   type ChatMessage, type FinanceEntry, type TlRequest, type Trip,
 } from "../src/model.ts";
 
@@ -30,7 +30,7 @@ test("tripsFor filters by status and orders archive newest first", () => {
   const list = [trip({ id: "a", status: "archived", startDate: "2025-01-01" }), trip({ id: "b", status: "archived", startDate: "2026-01-01" }), trip({ id: "c" })];
   assert.deepEqual(tripsFor(list, "archived").map((t) => t.id), ["b", "a"]);
   assert.deepEqual(tripsFor(list, "planning").map((t) => t.id), ["c"]);
-  // A trip marked Live stays in Planning until it is archived.
+  // A trip marked Live stays in Planning until it is archived. HOST is fed every trip, so sees them all.
   const withLive = [...list, trip({ id: "l", status: "live", startDate: "2026-04-01" })];
   assert.deepEqual(tripsFor(withLive, "planning").map((t) => t.id), ["l", "c"]);
 });
@@ -54,8 +54,7 @@ test("cleanItem: required, lists, numbers, checkbox", () => {
 
 const req = (o: Partial<TlRequest>): TlRequest => ({
   id: "r", kind: "flight", title: "t", details: "", quantity: null, amount: null, currency: "", neededBy: "", createdBy: "u",
-  createdByName: "", createdAtMs: 0, status: "pending", decidedByName: "", decidedAtMs: 0, decisionNote: "", completedByName: "",
-  completedAtMs: 0, response: "", ...o,
+  createdByName: "", createdAtMs: 0, status: "pending", decidedByName: "", decidedAtMs: 0, decisionNote: "", ...o,
 });
 
 test("TL request validation by kind", () => {
@@ -66,10 +65,12 @@ test("TL request validation by kind", () => {
   assert.ok(validateTlRequest({ kind: "bogus", title: "x", quantity: "", amount: "", currency: "" }).kind);
 });
 
-test("requests order: pending, approved, rejected, completed; open count", () => {
-  const rs = [req({ id: "c", status: "completed" }), req({ id: "p2", createdAtMs: 2 }), req({ id: "a", status: "approved" }), req({ id: "p1", createdAtMs: 1 }), req({ id: "x", status: "rejected" })];
-  assert.deepEqual(sortTlRequests(rs).map((r) => r.id), ["p1", "p2", "a", "x", "c"]);
-  assert.equal(openCount(rs), 3);
+test("requests order: awaiting approval first, then decided; approval is final; old 'completed' reads as approved", () => {
+  const rs = [req({ id: "a2", status: "approved", decidedAtMs: 2 }), req({ id: "p2", createdAtMs: 2 }), req({ id: "a1", status: "approved", decidedAtMs: 1 }), req({ id: "p1", createdAtMs: 1 }), req({ id: "x", status: "rejected" })];
+  assert.deepEqual(sortTlRequests(rs).map((r) => r.id), ["p1", "p2", "a2", "a1", "x"]);
+  assert.equal(openCount(rs), 2);
+  assert.equal(toRequestStatus("completed"), "approved");
+  assert.equal(toRequestStatus("bogus"), "pending");
 });
 
 test("amounts and finance totals per person per currency", () => {

@@ -28,7 +28,7 @@ service cloud.firestore {
     function trip(tripId) { return get(/databases/$(database)/documents/trips/$(tripId)).data; }
     function onTrip(tripId) { return isHost() || (verified() && me() in trip(tripId).memberUids); }
     function leaderUidOf(t) { return t.get('roles', {}).get('teamLeader', {}).get('uid', null); }
-    /** HOST or this trip's Team Leader: moves status, reads all declarations, completes requests. */
+    /** HOST or this trip's Team Leader: moves status, reads all declarations. */
     function isLead(tripId) { return isHost() || (verified() && leaderUidOf(trip(tripId)) == me()); }
     /** Controller role profile: sees every LIVE trip's basic details and messages (owner, 2026-11-10). */
     function isController() { return verified() && request.auth.token.get('controller', false) == true; }
@@ -225,7 +225,8 @@ service cloud.firestore {
       }
 
       // Requests, authorised by the trip's SPC ONLY (owner decision 2026-11-10):
-      // pending → approved | rejected → completed, every step by the SPC.
+      // pending → approved | rejected, decided by an SPC. Approval is final (owner, 2026-11-11):
+      // there is no completion step; only a rejected request can be resubmitted by its creator.
       match /tlRequests/{id} {
         allow read: if onTrip(tripId);
         allow create: if onTrip(tripId)
@@ -240,10 +241,6 @@ service cloud.firestore {
           (isSpc(tripId) && resource.data.status == 'pending' && d().status in ['approved', 'rejected']
             && changed().hasOnly(['status', 'decidedBy', 'decidedByName', 'decidedAt', 'decisionNote'])
             && d().decidedBy == me() && d().decidedAt == request.time && optStr(d(), 'decisionNote', 1000) && optStr(d(), 'decidedByName', 80))
-          // Complete an approved request: the trip's SPC only
-          || (isSpc(tripId) && resource.data.status == 'approved' && d().status == 'completed'
-            && changed().hasOnly(['status', 'completedBy', 'completedByName', 'completedAt', 'response'])
-            && d().completedBy == me() && d().completedAt == request.time && optStr(d(), 'response', 1000) && optStr(d(), 'completedByName', 80))
           // The creator resubmits a rejected request (decision fields removed)
           || (onTrip(tripId) && resource.data.createdBy == me() && resource.data.status == 'rejected' && d().status == 'pending'
             && changed().hasOnly(['status', 'decidedBy', 'decidedByName', 'decidedAt', 'decisionNote'])

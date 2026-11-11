@@ -14,7 +14,7 @@ import { app, auth, db, functions, storage } from "./firebase";
 import { getMessaging, getToken, isSupported } from "firebase/messaging";
 import {
   EMPTY_DEBRIEF, MAX_ATTACHMENT_BYTES, PRIVACY_VERSION, TERMS_VERSION, safeFileName,
-  REQUEST_KINDS, type ChatMessage, type Contact, type ContactInput, type TripContact, type Debrief, type FinanceEntry, type RequestKind, type TlRequestStatus,
+  REQUEST_KINDS, type ChatMessage, type Contact, type ContactInput, type TripContact, type Debrief, type FinanceEntry, type RequestKind, toRequestStatus,
   type VaccinationDeclaration, type VaccineRecord, type RequestInput, type RoleHolder, type TlRequest, type Trip, type TripRequest,
   type TripRoleKey, type TripStatus,
 } from "./model";
@@ -325,13 +325,11 @@ export async function deleteAttachment(tripId: string, a: Attachment) {
 const num = (v: unknown) => (typeof v === "number" ? v : null);
 const toTl = (d: DocumentSnapshot): TlRequest => {
   const v = dataOf(d);
-  const st = ["pending", "approved", "rejected", "completed"].includes(v.status) ? v.status : "pending";
   return {
     id: d.id, kind: (REQUEST_KINDS.some((k) => k.key === v.kind) ? v.kind : "resource") as RequestKind,
     title: str(v.title), details: str(v.details), quantity: num(v.quantity), amount: num(v.amount), currency: str(v.currency),
     neededBy: str(v.neededBy), createdBy: str(v.createdBy), createdByName: str(v.createdByName), createdAtMs: ms(v.createdAt),
-    status: st as TlRequestStatus, decidedByName: str(v.decidedByName), decidedAtMs: ms(v.decidedAt), decisionNote: str(v.decisionNote),
-    completedByName: str(v.completedByName), completedAtMs: ms(v.completedAt), response: str(v.response),
+    status: toRequestStatus(v.status), decidedByName: str(v.decidedByName), decidedAtMs: ms(v.decidedAt), decisionNote: str(v.decisionNote),
   };
 };
 
@@ -360,10 +358,6 @@ export const decideTlRequest = (s: Session, tripId: string, id: string, approve:
   });
 
 /** Team Leader / HOST: mark an approved request as done. */
-export const completeTlRequest = (s: Session, tripId: string, id: string, response: string) =>
-  updateDoc(doc(db, "trips", tripId, "tlRequests", id), {
-    status: "completed", completedBy: s.uid, completedByName: s.name.slice(0, 80), completedAt: serverTimestamp(), response: response.trim().slice(0, 1000),
-  });
 
 /** The creator resubmits a rejected request; it goes back for a fresh decision. */
 export const resubmitTlRequest = (tripId: string, id: string) =>

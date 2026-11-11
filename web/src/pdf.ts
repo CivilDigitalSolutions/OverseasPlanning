@@ -85,13 +85,12 @@ function buildPdf(pdf: JsPdf, autoTable: AutoTable, s: TripSnapshot, emblem: str
   heading("Requests");
   text("Team Leader summary", s.summaries.teamLeader?.text ?? "");
   text("SPC summary", s.summaries.spc?.text ?? "");
-  table(["Type", "Request", "Rationale", "Status", "Decision", "Completed"], s.tlRequests.map((r) => [
+  table(["Type", "Request", "Rationale", "Status", "Decision"], s.tlRequests.map((r) => [
     kindLabel(r.kind),
     `${r.title}\n${r.createdByName} · ${when(r.createdAtMs)}`,
     [r.details, r.quantity !== null ? `Qty ${r.quantity}` : "", r.amount !== null ? formatMoney(r.amount, r.currency) : "", r.neededBy ? `By ${formatDate(r.neededBy)}` : ""].filter(Boolean).join("\n"),
     REQUEST_STATUS_LABEL[r.status],
-    r.decidedByName ? `${r.decidedByName} · ${when(r.decidedAtMs)}${r.decisionNote ? `\n${r.decisionNote}` : ""}` : "",
-    r.completedByName ? `${r.completedByName} · ${when(r.completedAtMs)}${r.response ? `\n${r.response}` : ""}` : "",
+    r.decidedByName ? `${r.decidedByName} · ${when(r.decidedAtMs)}${r.decisionNote ? `\n${r.decisionNote}` : ""}` : ""
   ]));
 
   // One block per booking (flights now carry too many fields for a single table row).
