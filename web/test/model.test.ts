@@ -30,6 +30,9 @@ test("tripsFor filters by status and orders archive newest first", () => {
   const list = [trip({ id: "a", status: "archived", startDate: "2025-01-01" }), trip({ id: "b", status: "archived", startDate: "2026-01-01" }), trip({ id: "c" })];
   assert.deepEqual(tripsFor(list, "archived").map((t) => t.id), ["b", "a"]);
   assert.deepEqual(tripsFor(list, "planning").map((t) => t.id), ["c"]);
+  // A trip marked Live stays in Planning until it is archived.
+  const withLive = [...list, trip({ id: "l", status: "live", startDate: "2026-04-01" })];
+  assert.deepEqual(tripsFor(withLive, "planning").map((t) => t.id), ["l", "c"]);
 });
 
 test("status hints", () => {

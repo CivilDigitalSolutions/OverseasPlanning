@@ -135,8 +135,13 @@ export function tripMatches(t: Trip, q: string): boolean {
 }
 
 /** Trips for one list, newest departure first for archive, soonest first otherwise. */
+/**
+ * Trips for one list. Planning keeps every trip until it is ARCHIVED — including trips already
+ * marked Live (owner, 2026-11-11) — so planning can continue throughout the trip.
+ */
 export function tripsFor(trips: Trip[], status: TripStatus, q = ""): Trip[] {
-  const list = trips.filter((t) => t.status === status && tripMatches(t, q));
+  const inList = (t: Trip) => (status === "planning" ? t.status !== "archived" : t.status === status);
+  const list = trips.filter((t) => inList(t) && tripMatches(t, q));
   return list.sort((a, b) =>
     status === "archived" ? b.startDate.localeCompare(a.startDate) : a.startDate.localeCompare(b.startDate),
   );

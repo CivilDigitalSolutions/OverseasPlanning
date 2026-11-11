@@ -45,6 +45,7 @@ export function TripList({ session, status }: { session: Session; status: TripSt
                 </span>
                 <span className="stack" style={{ gap: 4, justifyItems: "end" }}>
                   {live && (() => { const ph = tripPhase(t, today); return <Badge tone={ph.tone}>{ph.label}</Badge>; })()}
+                  {status === "planning" && t.status === "live" && <Badge tone="ok">Live</Badge>}
                   {t.cyberRisk && <Badge tone={riskTone(t.cyberRisk)}>Cyber {t.cyberRisk}</Badge>}
                   {t.countryRisk && <Badge tone={riskTone(t.countryRisk)}>Country {t.countryRisk}</Badge>}
                 </span>

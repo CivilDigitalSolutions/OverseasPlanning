@@ -82,6 +82,8 @@ A mobile-first, installable web app (PWA) to request, plan, run and debrief over
    archived"). Opening one shows **only the basic details** (location, dates, team, role holders,
    risk levels) **and the team messages**; planning is done from the full trip screen.
    A trip can therefore appear in both Planning and Live trips while it is close to departure.
+6. **Planning keeps every trip until it is archived** (owner, 2026-11-11), including trips already
+   marked Live (shown with a "Live" badge), so planning can continue during the trip.
 
 Access (owner decision 2026-11-10): **a trip is visible only to the people on it** —
 the **requester**, everyone named in a **role**, everyone **booked on a flight**, and anyone given
