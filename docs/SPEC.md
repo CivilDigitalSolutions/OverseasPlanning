@@ -302,6 +302,9 @@ the membership recompute, `onFlightWritten` and `onMessageCreated`.
   above the on-screen keyboard (with its label), on pages, in pop-up forms and in the message box
   (`web/src/keyboard.ts`; pop-ups size themselves to the area above the keyboard; Android is also
   told to resize the page with `interactive-widget=resizes-content`).
+- **Trip tabs scroll sideways on any screen** (owner, 2026-11-12): ‹ › buttons appear when tabs are
+  hidden that way, a mouse wheel scrolls the row, the selected tab is kept in view, and ← → / Home /
+  End move between tabs (`ScrollTabs` in `web/src/components.tsx`).
 - **Dates are picked from a calendar** (owner, 2026-11-12): every date and date-time field opens a
   calendar (weeks start Monday; month and year dropdowns for dates years away; Today and Clear);
   date-times add hour and minute. Shown as "12 Nov 2026" / "12 Nov 2026, 21:10" in every browser

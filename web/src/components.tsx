@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 
 // ---- Router (tiny: pathname + history API) ---------------------------------------------------------
 
@@ -299,5 +299,66 @@ function CalendarDialog({ title, value, withTime, onClose, onPick }: {
         )}
       </div>
     </Modal>
+  );
+}
+
+// ---- Scrollable tab strip (owner, 2026-11-12) ------------------------------------------------------
+
+/**
+ * A row of tabs that scrolls sideways on any screen: ‹ › buttons appear when tabs are hidden that
+ * way, a mouse wheel scrolls the row, the selected tab is kept in view, and ← → move between tabs.
+ */
+export function ScrollTabs({ label, activeKey, children }: { label: string; activeKey: string; children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [edges, setEdges] = useState({ left: false, right: false });
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const update = () => setEdges({ left: el.scrollLeft > 2, right: el.scrollLeft + el.clientWidth < el.scrollWidth - 2 });
+    // An up/down mouse wheel scrolls the row sideways while there is more to see that way.
+    const onWheel = (e: WheelEvent) => {
+      if (Math.abs(e.deltaY) <= Math.abs(e.deltaX) || el.scrollWidth <= el.clientWidth) return;
+      const atEnd = e.deltaY > 0 ? el.scrollLeft + el.clientWidth >= el.scrollWidth - 1 : el.scrollLeft <= 0;
+      if (atEnd) return; // let the page scroll once the row is at its end
+      e.preventDefault();
+      el.scrollLeft += e.deltaY;
+    };
+    update();
+    el.addEventListener("scroll", update, { passive: true });
+    el.addEventListener("wheel", onWheel, { passive: false });
+    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(update) : null;
+    ro?.observe(el);
+    window.addEventListener("resize", update);
+    return () => { el.removeEventListener("scroll", update); el.removeEventListener("wheel", onWheel); ro?.disconnect(); window.removeEventListener("resize", update); };
+  }, []);
+
+  useEffect(() => {
+    const el = ref.current;
+    const sel = el?.querySelector<HTMLElement>('[aria-selected="true"]');
+    if (!el || !sel) return;
+    const l = sel.offsetLeft - el.offsetLeft;
+    if (l < el.scrollLeft + 24) el.scrollTo({ left: Math.max(0, l - 40) });
+    else if (l + sel.offsetWidth > el.scrollLeft + el.clientWidth - 24) el.scrollTo({ left: l + sel.offsetWidth - el.clientWidth + 40 });
+  }, [activeKey]);
+
+  const page = (dir: 1 | -1) => ref.current?.scrollBy({ left: dir * Math.max(120, ref.current.clientWidth * 0.7), behavior: "smooth" });
+  const onKeyDown = (e: ReactKeyboardEvent) => {
+    if (e.key !== "ArrowRight" && e.key !== "ArrowLeft" && e.key !== "Home" && e.key !== "End") return;
+    const tabs = Array.from(ref.current?.querySelectorAll<HTMLElement>('[role="tab"]') ?? []);
+    const i = tabs.indexOf(document.activeElement as HTMLElement);
+    if (i < 0) return;
+    e.preventDefault();
+    const next = e.key === "Home" ? 0 : e.key === "End" ? tabs.length - 1 : (i + (e.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length;
+    tabs[next].focus();
+    tabs[next].scrollIntoView({ block: "nearest", inline: "nearest" });
+  };
+
+  return (
+    <div className="tabs-wrap">
+      {edges.left && <button type="button" className="tab-scroll left" tabIndex={-1} aria-label="Scroll tabs left" onClick={() => page(-1)}><Icon name="back" size={18} /></button>}
+      <div className="tabs" role="tablist" aria-label={label} ref={ref} onKeyDown={onKeyDown}>{children}</div>
+      {edges.right && <button type="button" className="tab-scroll right" tabIndex={-1} aria-label="Scroll tabs right" onClick={() => page(1)}><Icon name="next" size={18} /></button>}
+    </div>
   );
 }

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { AccessTab } from "./AccessTab";
 import { AttachmentsTab } from "./AttachmentsTab";
 import { ContactsTab } from "./ContactsTab";
-import { Badge, Checkbox, Empty, Icon, Loading, Modal, Notice, SelectField, TextField, errorText, navigate, relTime } from "./components";
+import { Badge, Checkbox, Empty, Icon, Loading, Modal, Notice, ScrollTabs, SelectField, TextField, errorText, navigate, relTime } from "./components";
 import { DebriefTab } from "./DebriefTab";
 import { ItemsTab } from "./ItemsTab";
 import { MessagesTab } from "./MessagesTab";
@@ -87,13 +87,13 @@ export function TripDetail({ session, tripId, tab }: { session: Session; tripId:
       </div>
       {exportErr && <Notice tone="bad">{exportErr}</Notice>}
       {hint && <div style={{ marginBottom: 12 }}><Notice tone="warn">{hint}</Notice></div>}
-      <div className="tabs" role="tablist" aria-label="Trip sections">
+      <ScrollTabs label="Trip sections" activeKey={active}>
         {TABS.map((t) => (
           <button key={t.key} role="tab" aria-selected={active === t.key} onClick={() => navigate(`/trips/${trip.id}/${t.key}`, true)}>
             {t.label}{t.key === "requests" && open > 0 && <span className="count" aria-label={`${open} open`}>{open}</span>}
           </button>
         ))}
-      </div>
+      </ScrollTabs>
       {body}
     </>
   );

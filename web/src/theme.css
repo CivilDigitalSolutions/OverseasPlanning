@@ -125,6 +125,16 @@ input[aria-invalid="true"], select[aria-invalid="true"], textarea[aria-invalid="
 /* ---- tabs ---- */
 .tabs { display: flex; gap: 4px; overflow-x: auto; margin: 0 -16px 14px; padding: 0 16px 6px; border-bottom: 1px solid var(--line); scrollbar-width: none; }
 .tabs::-webkit-scrollbar { display: none; }
+/* Scrollable tab strip (ScrollTabs): ‹ › buttons over a fade where tabs are hidden. */
+.tabs-wrap { position: relative; margin: 0 -16px 14px; }
+.tabs-wrap > .tabs { margin: 0; scroll-padding-inline: 40px; }
+.tab-scroll {
+  position: absolute; top: 0; bottom: 7px; z-index: 1; width: 44px; border: 0; padding: 0; cursor: pointer;
+  display: grid; place-items: center; color: var(--primary);
+}
+.tab-scroll.left { left: 0; background: linear-gradient(to right, var(--bg) 55%, transparent); justify-items: start; padding-left: 6px; }
+.tab-scroll.right { right: 0; background: linear-gradient(to left, var(--bg) 55%, transparent); justify-items: end; padding-right: 6px; }
+.tab-scroll:hover { color: var(--ink); }
 
 /* ---- notices ---- */
 .notice { padding: 12px 14px; border-radius: 10px; background: var(--primary-soft); color: var(--ink); font-size: .92rem; }
