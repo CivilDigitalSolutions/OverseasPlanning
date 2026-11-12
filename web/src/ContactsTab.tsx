@@ -1,10 +1,10 @@
 import { useState } from "react";
 import { Badge, Confirm, Empty, Icon, Loading, Modal, Notice, TextField, errorText } from "./components";
 import {
-  CONTACT_FIELDS, EMPTY_CONTACT, cleanContact, contactMatches, sortContacts,
+  CONTACT_FIELDS, EMPTY_CONTACT, cleanContact, contactMatches, recentContacts, sortContacts,
   type Contact, type ContactInput, type TripContact,
 } from "./model";
-import { addContactToTrip, deleteContact, removeTripContact, saveContact, useContacts, useTripContacts } from "./store";
+import { addContactToTrip, deleteContact, removeTripContact, saveContact, useContacts, useRecentContactIds, useTripContacts } from "./store";
 import type { TripCtx } from "./TripDetail";
 
 /**
@@ -75,10 +75,16 @@ function AddContact({ ctx, book, onTrip, onClose }: { ctx: TripCtx; book: Contac
   const [creating, setCreating] = useState(false);
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
+  const [showAll, setShowAll] = useState(false);
+  const recentIds = useRecentContactIds(ctx.session);
 
   if (creating) return <ContactForm ctx={ctx} contact={null} initialName={q} onClose={onClose} addToTrip />;
 
-  const results = book ? sortContacts(book.filter((c) => contactMatches(c, q))).slice(0, 50) : null;
+  // Collapsed by default (owner, 2026-11-12): my 5 most recently used contacts; search or
+  // "Show all" for the rest of the book.
+  const searching = q.trim() !== "";
+  const recent = book && recentIds ? recentContacts(book, recentIds) : null;
+  const results = !book ? null : searching || showAll ? sortContacts(book.filter((c) => contactMatches(c, q))).slice(0, 50) : recent;
 
   if (chosen) {
     return (
@@ -108,7 +114,9 @@ function AddContact({ ctx, book, onTrip, onClose }: { ctx: TripCtx; book: Contac
           <label htmlFor="contact-search" className="sr-only">Search contacts</label>
           <input id="contact-search" type="search" placeholder="Search name, organisation, email, country…" value={q} onChange={(e) => setQ(e.target.value)} />
         </div>
-        {results === null ? <Loading /> : results.length === 0 ? <Empty>{q ? "No matches" : "The contacts book is empty"}</Empty> : (
+        {!searching && !showAll && <h3 className="small muted" style={{ margin: 0 }}>Your recent contacts</h3>}
+        {results === null ? <Loading /> : results.length === 0
+          ? <Empty>{searching ? "No matches" : book?.length ? "None used yet — search the book" : "The contacts book is empty"}</Empty> : (
           <ul className="list">
             {results.map((c) => (
               <li key={c.id}>
@@ -123,6 +131,11 @@ function AddContact({ ctx, book, onTrip, onClose }: { ctx: TripCtx; book: Contac
               </li>
             ))}
           </ul>
+        )}
+        {!searching && !!book?.length && (
+          <button type="button" className="btn ghost small" style={{ justifySelf: "start" }} aria-expanded={showAll} onClick={() => setShowAll(!showAll)}>
+            {showAll ? "Show recent only" : `Show all (${book.length})`}
+          </button>
         )}
       </div>
     </Modal>

@@ -4,7 +4,7 @@ import {
   CURRENCIES, REQUEST_KINDS, REQUEST_STATUS_LABEL, formatDate, formatMoney, kindLabel, parseAmount, requestTone, sortTlRequests,
   validateTlRequest, type RequestKind, type TlRequest, type TlRequestStatus,
 } from "./model";
-import { addTlRequest, decideTlRequest, deleteTlRequest, resubmitTlRequest, saveSummary, useSummaries, type Summary, type SummaryRole } from "./store";
+import { addTlRequest, decideTlRequest, deleteTlRequest, remindSpc, resubmitTlRequest, saveSummary, useSummaries, type Summary, type SummaryRole } from "./store";
 import type { TripCtx } from "./TripDetail";
 
 /**
@@ -24,7 +24,14 @@ export function RequestsTab({ ctx, requests }: { ctx: TripCtx; requests: TlReque
   const [deciding, setDeciding] = useState<{ r: TlRequest; approve: boolean } | null>(null);
   const [removing, setRemoving] = useState<TlRequest | null>(null);
   const [err, setErr] = useState("");
+  const [reminded, setReminded] = useState("");
   const summaries = useSummaries(ctx.trip.id);
+  const outstanding = (requests?.filter((r) => r.status === "pending").length ?? 0) + ctx.trip.pendingFlights;
+  async function remind() {
+    setErr(""); setReminded("");
+    try { const r = await remindSpc(ctx.session, ctx.trip.id); setReminded(r.notified ? "SPC notified." : "No SPC with an account on this trip yet."); }
+    catch (e) { setErr(errorText(e)); }
+  }
 
   const list = requests ? sortTlRequests(requests).filter((r) => (filter === "all" || r.status === filter) && (!kind || r.kind === kind)) : null;
   const counts = Object.fromEntries(FILTERS.map((f) => [f.key, requests ? requests.filter((r) => f.key === "all" || r.status === f.key).length : 0]));
@@ -33,6 +40,7 @@ export function RequestsTab({ ctx, requests }: { ctx: TripCtx; requests: TlReque
     <>
       <div className="page-head">
         <h2>Requests</h2><span className="spacer" />
+        {outstanding > 0 && !ctx.isSpc && <button className="btn secondary small" onClick={remind}><Icon name="bell" size={16} /> Notify SPC</button>}
         <button className="btn small" onClick={() => setAdding(true)}><Icon name="plus" size={16} /> New request</button>
       </div>
       <div className="grid2" style={{ marginBottom: 14 }}>
@@ -50,6 +58,7 @@ export function RequestsTab({ ctx, requests }: { ctx: TripCtx; requests: TlReque
         <SelectField label="Type" value={kind} onChange={(v) => setKind(v as RequestKind | "")} options={REQUEST_KINDS.map((k) => ({ value: k.key, label: k.label }))} placeholder="All types" />
       </div>
       {err && <Notice tone="bad">{err}</Notice>}
+      {reminded && <Notice tone="ok">{reminded}</Notice>}
       {list === null ? <Loading /> : list.length === 0 ? <Empty>No requests</Empty> : (
         <ul className="list">
           {list.map((r) => {

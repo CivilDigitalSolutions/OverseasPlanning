@@ -1,6 +1,5 @@
 node_modules/
 dist/
-lib/
 .env.local
 *.local
 *-debug.log

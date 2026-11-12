@@ -7,6 +7,7 @@ export { recordAgreement } from "./recordAgreement";
 export { createTrip, updateTripRoles } from "./createTrip";
 export { addTripAccess, removeTripAccess, syncPendingAccess, onFlightWritten, onMessageCreated } from "./tripAccess";
 export { listLiveTrips } from "./listLiveTrips";
+export { onSpcRequestWritten, onSpcFlightWritten, remindSpc } from "./spcQueue";
 export { listAccounts, createAccount, setAccountRoles, deleteAccount } from "./adminAccounts";
 export { setHostRole, setRole } from "./setHostRole";
 export {

@@ -120,7 +120,7 @@ const toTrip = (v: Partial<Trip>): Trip => ({
   roles: (v.roles && !Array.isArray(v.roles) ? v.roles : {}) as Trip["roles"], memberUids: v.memberUids ?? [], pendingEmails: v.pendingEmails ?? [],
   requestId: v.requestId ?? null, createdByName: v.createdByName ?? "", createdByEmail: v.createdByEmail ?? "", dipAgreed: v.dipAgreed === true,
   dipAgreedDate: v.dipAgreedDate ?? "", dipClassification: v.dipClassification ?? "", updatedByName: v.updatedByName ?? "",
-  updatedAtMs: v.updatedAtMs ?? 0, createdAtMs: v.createdAtMs ?? 0,
+  updatedAtMs: v.updatedAtMs ?? 0, createdAtMs: v.createdAtMs ?? 0, pendingRequests: v.pendingRequests ?? 0, pendingFlights: v.pendingFlights ?? 0,
 });
 
 export function useTrips(_s: Session): Trip[] | null {
@@ -237,6 +237,8 @@ export const decideTlRequest = (_s: Session, tripId: string, id: string, approve
   api("POST", `${T(tripId)}/requests/${encodeURIComponent(id)}/decide`, { approve, note: note.trim().slice(0, 1000) }).then(() => refresh(`${T(tripId)}/requests`));
 export const resubmitTlRequest = (tripId: string, id: string) =>
   api("POST", `${T(tripId)}/requests/${encodeURIComponent(id)}/resubmit`).then(() => refresh(`${T(tripId)}/requests`));
+/** Anyone on the trip reminds its SPCs of what is waiting for them (rate-limited on the server). */
+export const remindSpc = (_s: Session, tripId: string) => api<{ notified: number }>("POST", `${T(tripId)}/remind-spc`);
 export const deleteTlRequest = (tripId: string, id: string) =>
   api("DELETE", `${T(tripId)}/requests/${encodeURIComponent(id)}`).then(() => refresh(`${T(tripId)}/requests`));
 
@@ -281,7 +283,11 @@ export function useTripContacts(tripId: string): TripContact[] | null {
   return usePoll(`${T(tripId)}/contacts`, (j) => j.contacts as TripContact[], [], 60_000);
 }
 export const addContactToTrip = (_s: Session, tripId: string, c: Contact, tripRole: string) =>
-  api("PUT", `${T(tripId)}/contacts/${encodeURIComponent(c.id)}`, { tripRole: tripRole.trim().slice(0, 80) }).then(() => refresh(`${T(tripId)}/contacts`));
+  api("PUT", `${T(tripId)}/contacts/${encodeURIComponent(c.id)}`, { tripRole: tripRole.trim().slice(0, 80) }).then(() => refresh(`${T(tripId)}/contacts`, "contacts/recent"));
+/** My most recently used book contacts (the server reads them from the trips I added them to). */
+export function useRecentContactIds(_s: Session): string[] | null {
+  return usePoll("contacts/recent", (j) => j.ids as string[], [], 120_000);
+}
 export const removeTripContact = (tripId: string, id: string) =>
   api("DELETE", `${T(tripId)}/contacts/${encodeURIComponent(id)}`).then(() => refresh(`${T(tripId)}/contacts`));
 

@@ -48,6 +48,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::put('teams/{id}', [TeamController::class, 'update']);
         Route::delete('teams/{id}', [TeamController::class, 'destroy']);
         Route::get('contacts', [PeopleController::class, 'contacts']);
+        Route::get('contacts/recent', [RecordsController::class, 'recentContacts']);
         Route::post('contacts', [PeopleController::class, 'saveContact']);
         Route::put('contacts/{id}', [PeopleController::class, 'saveContact']);
         Route::delete('contacts/{id}', [PeopleController::class, 'deleteContact']);
@@ -104,6 +105,7 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::post('requests/{id}/decide', [RecordsController::class, 'tlDecide']);
             Route::post('requests/{id}/resubmit', [RecordsController::class, 'tlResubmit']);
             Route::delete('requests/{id}', [RecordsController::class, 'tlDestroy']);
+            Route::post('remind-spc', [TripController::class, 'remindSpc']);
 
             Route::get('summaries', [RecordsController::class, 'summaries']);
             Route::put('summaries/{role}', [RecordsController::class, 'saveSummary']);

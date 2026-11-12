@@ -236,3 +236,27 @@ html.kb-open main, html.kb-open .modal { padding-bottom: 50vh; }
   .topbar .icon-btn { padding: 6px; }
 }
 .topbar .brand { flex-shrink: 1; overflow: hidden; }
+
+/* Calendar date picker (owner, 2026-11-12): every date is chosen from a calendar. */
+.date-input {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; min-height: 46px;
+  padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink);
+  font: inherit; text-align: left; cursor: pointer;
+}
+.date-input:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
+.date-input[aria-invalid="true"] { border-color: var(--bad); }
+.date-input .placeholder { color: var(--ink-2); }
+.date-input:disabled { opacity: .55; cursor: not-allowed; }
+.calendar { display: grid; gap: 10px; }
+.cal-head { display: grid; grid-template-columns: auto 1fr auto auto; gap: 6px; align-items: center; }
+.cal-head select { min-width: 0; }
+.cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; text-align: center; }
+.cal-dow { font-size: .78rem; font-weight: 650; color: var(--ink-2); padding: 4px 0; }
+.cal-day {
+  min-height: 42px; border: 1px solid transparent; border-radius: 10px; background: none; color: var(--ink);
+  font: inherit; font-weight: 600; cursor: pointer;
+}
+.cal-day:hover { background: var(--primary-soft); }
+.cal-day.today { border-color: var(--primary); }
+.cal-day[aria-pressed="true"] { background: var(--primary); color: var(--primary-ink); }
+.cal-day:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }

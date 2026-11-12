@@ -4,11 +4,14 @@ namespace App\Http\Controllers;
 
 use App\Security\AnomalyDetector;
 use App\Services\Membership;
+use App\Services\Notifier;
+use App\Services\SpcQueue;
 use App\Services\TripAccess;
 use App\Support\Clean;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Str;
 
 /**
@@ -81,7 +84,8 @@ class TripController extends Controller
 
     // ---- trips ------------------------------------------------------------------------------------
 
-    public static function tripView(object $t, bool $basicOnly = false): array
+    /** @param array{requests?: int, flights?: int} $counts precomputed SPC counts (lists), else counted here */
+    public static function tripView(object $t, bool $basicOnly = false, array $counts = []): array
     {
         $roles = is_array($t->roles) ? $t->roles : (json_decode($t->roles, true) ?: []);
         $base = [
@@ -101,7 +105,28 @@ class TripController extends Controller
             'requestId' => $t->request_id, 'createdByName' => $t->created_by_name, 'createdByEmail' => $t->created_by_email,
             'dipAgreed' => (bool) $t->dip_agreed, 'dipAgreedDate' => $t->dip_agreed_date, 'dipClassification' => $t->dip_classification,
             'updatedByName' => $t->updated_by_name, 'updatedAtMs' => self::ms($t->updated_at), 'createdAtMs' => self::ms($t->created_at),
+            'pendingRequests' => $counts['requests'] ?? SpcQueue::counts($t->id)['requests'],
+            'pendingFlights' => $counts['flights'] ?? SpcQueue::counts($t->id)['flights'],
         ];
+    }
+
+    /** Anyone on the trip reminds its SPCs of what is waiting (3 per hour per person per trip). */
+    public function remindSpc(Request $request, string $trip): JsonResponse
+    {
+        $u = $this->me($request);
+        $t = TripAccess::needView($u, $trip);
+        $key = "remind-spc:{$u->id}:{$t->id}";
+        if (RateLimiter::tooManyAttempts($key, 3)) {
+            return $this->fail(429, 'The SPC has been reminded recently. Try again later.');
+        }
+        RateLimiter::hit($key, 3600);
+        $c = SpcQueue::counts($t->id);
+        if ($c['requests'] + $c['flights'] === 0) {
+            return response()->json(['notified' => 0]);
+        }
+        $to = Notifier::recipients(SpcQueue::spcsOf($t), $u->id);
+        Notifier::send($to, 'spc_pending', 'Reminder: awaiting your approval', SpcQueue::label($c) . ' — ' . ($t->name ?: $t->team_name), $t->id, "/trips/{$t->id}/requests");
+        return response()->json(['notified' => count($to)]);
     }
 
     /** HOST sees every trip; everyone else the trips they are on. */
@@ -112,7 +137,13 @@ class TripController extends Controller
         if (!$u->is_host) {
             $q->whereIn('id', DB::table('trip_members')->where('user_id', $u->id)->select('trip_id'));
         }
-        return response()->json(['trips' => $q->limit(1000)->get()->map(fn ($t) => self::tripView($t))]);
+        $trips = $q->limit(1000)->get();
+        $ids = $trips->pluck('id')->all();
+        $reqs = DB::table('tl_requests')->whereIn('trip_id', $ids)->where('status', 'pending')->groupBy('trip_id')->selectRaw('trip_id, count(*) as n')->pluck('n', 'trip_id');
+        $flights = DB::table('trip_items')->whereIn('trip_id', $ids)->where('kind', 'flights')->whereNull('spc_decision')->groupBy('trip_id')->selectRaw('trip_id, count(*) as n')->pluck('n', 'trip_id');
+        return response()->json(['trips' => $trips->map(fn ($t) => self::tripView($t, false, [
+            'requests' => (int) ($reqs[$t->id] ?? 0), 'flights' => (int) ($flights[$t->id] ?? 0),
+        ]))]);
     }
 
     public function show(Request $request, string $trip): JsonResponse

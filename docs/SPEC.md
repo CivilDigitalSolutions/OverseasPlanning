@@ -229,6 +229,10 @@ Assets · Messages · Attachments · Vaccinations · Contacts · Access · Debri
   (saved to the book and added to the trip). The trip keeps its own copy
   (`trips/{id}/contacts/{contactId}`) so its record and PDF stand on their own; the tab shows the
   book's current details where available.
+- **Collapsed list** (owner, 2026-11-12): the book opens on **your 5 most recently used contacts**
+  (the ones you last added to a trip — `users/{uid}/recentContacts`, yours only; in the Laravel
+  API derived from the trips you added them to). Typing searches the whole book; **Show all (N)**
+  expands the full list.
 - TODO(owner): a search index if the book grows past a few thousand entries (search is in the
   browser today).
 
@@ -265,7 +269,16 @@ the membership recompute, `onFlightWritten` and `onMessageCreated`.
   stores the device token in `users/{uid}/pushTokens`; the service worker (`web/src/sw.ts`) shows the
   notification and opens the link when tapped. Dead tokens are pruned. **iPhone: web push needs the
   app added to the Home Screen** (iOS 16.4+). The artifact demo can't receive push.
-- TODO(owner): notifications for request approvals/decisions, per-type mute, quiet hours.
+- **SPC outstanding work** (owner, 2026-11-12). A trip's SPCs are its **named SPC** plus
+  **SPC-profile holders on the trip** (the people who may decide). They are notified ("Awaiting
+  your approval") when a **request is raised or resubmitted**, a **flight is added**, or **a decided
+  flight is changed** (the edit clears the decision). Each trip carries `pendingRequests` and
+  `pendingFlights`, kept by the server (functions `onSpcRequestWritten` / `onSpcFlightWritten`;
+  clients cannot write them). On **Planning**, an SPC sees an **Awaiting your approval** panel
+  listing those trips with "2 requests · 1 flight" and each trip shows "N awaiting you". On a trip's
+  Requests tab, anyone else on the trip can press **Notify SPC** to send a reminder
+  (`remindSpc`, 3 per hour per person per trip).
+- TODO(owner): notifications for request decisions to the requester, per-type mute, quiet hours.
 
 ## 10. Offline and installation
 
@@ -282,6 +295,10 @@ the membership recompute, `onFlightWritten` and `onMessageCreated`.
   above the on-screen keyboard (with its label), on pages, in pop-up forms and in the message box
   (`web/src/keyboard.ts`; pop-ups size themselves to the area above the keyboard; Android is also
   told to resize the page with `interactive-widget=resizes-content`).
+- **Dates are picked from a calendar** (owner, 2026-11-12): every date and date-time field opens a
+  calendar (weeks start Monday; month and year dropdowns for dates years away; Today and Clear);
+  date-times add hour and minute. Shown as "12 Nov 2026" / "12 Nov 2026, 21:10" in every browser
+  (`DateField` in `web/src/components.tsx`). Stored values are unchanged (yyyy-mm-dd / yyyy-mm-ddThh:mm).
 
 ## 12. Security
 

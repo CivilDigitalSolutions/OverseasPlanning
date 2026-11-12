@@ -9,7 +9,7 @@ import {
   EMPTY_DEBRIEF, MAX_ATTACHMENT_BYTES, PRIVACY_VERSION, REQUEST_KINDS, TERMS_VERSION,
   type ChatMessage, type Contact, type ContactInput, type TripContact, type Debrief, type FinanceEntry, type RequestInput, type RequestKind, type RoleHolder, type TlRequest,
   toRequestStatus, type Trip, type TripRequest, type TripRoleKey, type TripStatus, type VaccinationDeclaration, type VaccineRecord,
-  type Team, cleanTeamName, sortTeams,
+  type Team, cleanTeamName, sortTeams, pendingLabel,
 } from "../model";
 import { DELETE, be, type QuerySpec, type Snap } from "./backend";
 import { computeAccess, flightLabel, type AccessInput, type Person } from "../membership";
@@ -266,7 +266,7 @@ const toTrip = (s: Snap): Trip => {
     requestId: typeof v.requestId === "string" ? v.requestId : null, createdByName: str(v.createdByName), createdByEmail: str(v.createdByEmail),
     dipAgreed: v.dipAgreed === true, dipAgreedDate: str(v.dipAgreedDate), dipClassification: str(v.dipClassification),
     updatedByName: str(v.updatedByName), updatedAtMs: ms(v.updatedAt),
-    createdAtMs: ms(v.createdAt),
+    createdAtMs: ms(v.createdAt), pendingRequests: Number(v.pendingRequests) || 0, pendingFlights: Number(v.pendingFlights) || 0,
   };
 };
 
@@ -356,19 +356,27 @@ export async function addItem(s: Session, tripId: string, coll: string, values: 
   const id = be().newId();
   await be().set(`trips/${tripId}/${coll}/${id}`, { ...values, createdBy: s.uid, createdByName: s.name.slice(0, 80), createdAt: now(), updatedAt: now(), updatedBy: s.uid });
   await afterFlights(tripId, coll, new Set(), id);
+  if (coll === "flights") { await recountSpc(tripId); await tellSpc(tripId, `Flight to approve: ${flightLabel(values)}`, "flights"); }
 }
 export async function updateItem(tripId: string, coll: string, id: string, values: Record<string, unknown>, keys: string[]) {
-  const before = coll === "flights" ? passengerUids((await be().get(`trips/${tripId}/${coll}/${id}`))?.data) : undefined;
+  const old = coll === "flights" ? (await be().get(`trips/${tripId}/${coll}/${id}`))?.data : undefined;
+  const before = coll === "flights" ? passengerUids(old) : undefined;
   await be().patch(`trips/${tripId}/${coll}/${id}`, { ...Object.fromEntries(keys.map((k) => [k, k in values ? values[k] : DELETE])), updatedAt: now(), updatedBy: be().uid });
   await afterFlights(tripId, coll, before, id);
+  if (coll === "flights") {
+    await recountSpc(tripId);
+    // Editing a decided flight clears the decision, so it needs the SPC again.
+    if (old?.spcDecision) await tellSpc(tripId, `Changed flight to approve again: ${flightLabel(values)}`, "flights");
+  }
 }
-export const deleteItem = (tripId: string, coll: string, id: string) => be().del(`trips/${tripId}/${coll}/${id}`).then(() => afterFlights(tripId, coll));
+export const deleteItem = (tripId: string, coll: string, id: string) => be().del(`trips/${tripId}/${coll}/${id}`)
+  .then(() => afterFlights(tripId, coll)).then(() => (coll === "flights" ? recountSpc(tripId) : undefined));
 
 
 export const decideFlight = (s: Session, tripId: string, id: string, decision: "approved" | "not_approved", rationale: string) =>
   be().patch(`trips/${tripId}/flights/${id}`, {
     spcDecision: decision, spcRationale: rationale.trim().slice(0, 2000), spcDecidedBy: s.uid, spcDecidedByName: s.name.slice(0, 80), spcDecidedAt: now(), updatedAt: now(),
-  });
+  }).then(() => recountSpc(tripId));
 
 // ---- Messages ---------------------------------------------------------------------------------
 
@@ -452,19 +460,56 @@ const toTl = (s: Snap): TlRequest => {
 export const useTlRequests = (tripId: string) => useColl(`trips/${tripId}/tlRequests`, {}, toTl, tripId);
 
 export interface TlRequestInput { kind: RequestKind; title: string; details: string; quantity: number | null; amount: number | null; currency: string; neededBy: string }
-export const addTlRequest = (s: Session, tripId: string, r: TlRequestInput) =>
-  be().set(`trips/${tripId}/tlRequests/${be().newId()}`, {
+export async function addTlRequest(s: Session, tripId: string, r: TlRequestInput) {
+  await be().set(`trips/${tripId}/tlRequests/${be().newId()}`, {
     kind: r.kind, title: r.title.trim(), details: r.details.trim(),
     ...(r.quantity !== null ? { quantity: r.quantity } : {}),
     ...(r.amount !== null ? { amount: r.amount, currency: r.currency } : {}),
     ...(r.neededBy ? { neededBy: r.neededBy } : {}),
     createdBy: s.uid, createdByName: s.name.slice(0, 80), createdAt: now(), status: "pending",
   });
+  await recountSpc(tripId);
+  await tellSpc(tripId, `Request to approve: ${r.title.trim()}`, "requests");
+}
 export const decideTlRequest = (s: Session, tripId: string, id: string, approve: boolean, note: string) =>
-  be().patch(`trips/${tripId}/tlRequests/${id}`, { status: approve ? "approved" : "rejected", decidedBy: s.uid, decidedByName: s.name.slice(0, 80), decidedAt: now(), decisionNote: note.trim().slice(0, 1000) });
-export const resubmitTlRequest = (tripId: string, id: string) =>
-  be().patch(`trips/${tripId}/tlRequests/${id}`, { status: "pending", decidedBy: DELETE, decidedByName: DELETE, decidedAt: DELETE, decisionNote: DELETE });
-export const deleteTlRequest = (tripId: string, id: string) => be().del(`trips/${tripId}/tlRequests/${id}`);
+  be().patch(`trips/${tripId}/tlRequests/${id}`, { status: approve ? "approved" : "rejected", decidedBy: s.uid, decidedByName: s.name.slice(0, 80), decidedAt: now(), decisionNote: note.trim().slice(0, 1000) })
+    .then(() => recountSpc(tripId));
+export async function resubmitTlRequest(tripId: string, id: string) {
+  await be().patch(`trips/${tripId}/tlRequests/${id}`, { status: "pending", decidedBy: DELETE, decidedByName: DELETE, decidedAt: DELETE, decisionNote: DELETE });
+  await recountSpc(tripId);
+  await tellSpc(tripId, `Request resubmitted: ${str((await be().get(`trips/${tripId}/tlRequests/${id}`))?.data.title)}`, "requests");
+}
+export const deleteTlRequest = (tripId: string, id: string) => be().del(`trips/${tripId}/tlRequests/${id}`).then(() => recountSpc(tripId));
+
+// ---- SPC outstanding work (owner, 2026-11-12): counts on the trip + notifications to its SPCs ------
+/** What the functions do in production: count what waits for an SPC and store it on the trip. */
+async function recountSpc(tripId: string) {
+  const [reqs, flights] = await Promise.all([be().list(`trips/${tripId}/tlRequests`), be().list(`trips/${tripId}/flights`)]);
+  await be().patch(`trips/${tripId}`, {
+    pendingRequests: reqs.filter((r) => toRequestStatus(r.data.status) === "pending").length,
+    pendingFlights: flights.filter((f) => !f.data.spcDecision).length,
+  });
+}
+/** The trip's named SPC plus SPC-profile holders on the trip. */
+async function spcsOf(tripId: string): Promise<string[]> {
+  const t = (await be().get(`trips/${tripId}`))?.data;
+  if (!t) return [];
+  const named = str((t.roles as Record<string, { uid?: string }> | undefined)?.spc?.uid);
+  const members = (t.memberUids ?? []) as string[];
+  const profiles = (await be().list("accounts")).filter((a) => a.data.spc === true && members.includes(a.id)).map((a) => a.id);
+  return [...new Set([named, ...profiles].filter(Boolean))];
+}
+async function tellSpc(tripId: string, body: string, tab: "requests" | "flights") {
+  const t = (await be().get(`trips/${tripId}`))?.data;
+  await notifyDemo(await spcsOf(tripId), { type: "spc_pending", title: "Awaiting your approval", body: `${body} — ${str(t?.name)}`, tripId, link: `/trips/${tripId}/${tab}` });
+}
+export async function remindSpc(_s: Session, tripId: string): Promise<{ notified: number }> {
+  await recountSpc(tripId);
+  const t = (await be().get(`trips/${tripId}`))!;
+  const spcs = (await spcsOf(tripId)).filter((u) => u !== be().uid);
+  await notifyDemo(spcs, { type: "spc_pending", title: "Reminder: awaiting your approval", body: `${pendingLabel(toTrip(t))} — ${str(t.data.name)}`, tripId, link: `/trips/${tripId}/requests` });
+  return { notified: spcs.length };
+}
 
 // ---- Request summaries (Team Leader / SPC) --------------------------------------------------------
 
@@ -544,11 +589,17 @@ const toTripContact = (s: Snap): TripContact => ({
   country: str(s.data.country), tripRole: str(s.data.tripRole), addedByName: str(s.data.addedByName), addedAtMs: ms(s.data.addedAt),
 });
 export const useTripContacts = (tripId: string) => useColl(`trips/${tripId}/contacts`, {}, toTripContact, tripId);
-export const addContactToTrip = (s: Session, tripId: string, c: Contact, tripRole: string) =>
-  be().set(`trips/${tripId}/contacts/${c.id}`, {
+export async function addContactToTrip(s: Session, tripId: string, c: Contact, tripRole: string) {
+  await be().set(`trips/${tripId}/contacts/${c.id}`, {
     name: c.name, organisation: c.organisation, jobTitle: c.jobTitle, email: c.email, phone: c.phone, country: c.country,
     tripRole: tripRole.trim().slice(0, 80), addedBy: s.uid, addedByName: s.name.slice(0, 80), addedAt: now(),
   });
+  await be().set(`users/${s.uid}/recentContacts/${c.id}`, { usedAt: now() });
+}
+export function useRecentContactIds(s: Session): string[] | null {
+  const list = useColl(`users/${s.uid}/recentContacts`, {}, (d) => ({ id: d.id, at: Number(d.data.usedAt) || 0 }));
+  return list ? [...list].sort((a, b) => b.at - a.at).slice(0, 5).map((x) => x.id) : null;
+}
 export const removeTripContact = (tripId: string, id: string) => be().del(`trips/${tripId}/contacts/${id}`);
 
 // ---- HOST administration ------------------------------------------------------------------------

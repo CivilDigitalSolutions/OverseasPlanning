@@ -142,7 +142,7 @@ const toTrip = (d: DocumentSnapshot): Trip => {
     requestId: typeof v.requestId === "string" ? v.requestId : null, createdByName: str(v.createdByName), createdByEmail: str(v.createdByEmail),
     dipAgreed: v.dipAgreed === true, dipAgreedDate: str(v.dipAgreedDate), dipClassification: str(v.dipClassification),
     updatedByName: str(v.updatedByName), updatedAtMs: ms(v.updatedAt),
-    createdAtMs: ms(v.createdAt),
+    createdAtMs: ms(v.createdAt), pendingRequests: num(v.pendingRequests) ?? 0, pendingFlights: num(v.pendingFlights) ?? 0,
   };
 };
 
@@ -367,6 +367,9 @@ export const resubmitTlRequest = (tripId: string, id: string) =>
 
 export const deleteTlRequest = (tripId: string, id: string) => deleteDoc(doc(db, "trips", tripId, "tlRequests", id));
 
+/** Anyone on the trip reminds its SPCs of what is waiting for them (functions: remindSpc, rate-limited). */
+export const remindSpc = (_s: Session, tripId: string) => call<{ notified: number }>("remindSpc", { tripId });
+
 
 // ---- Request summaries (Team Leader / SPC) --------------------------------------------------------
 
@@ -480,12 +483,21 @@ export function useTripContacts(tripId: string): TripContact[] | null {
   return list;
 }
 /** Link a book contact to the trip (a copy of its details, so the trip record stands on its own). */
-export const addContactToTrip = (s: Session, tripId: string, c: Contact, tripRole: string) =>
-  setDoc(doc(db, "trips", tripId, "contacts", c.id), {
+export async function addContactToTrip(s: Session, tripId: string, c: Contact, tripRole: string) {
+  await setDoc(doc(db, "trips", tripId, "contacts", c.id), {
     name: c.name, organisation: c.organisation, jobTitle: c.jobTitle, email: c.email, phone: c.phone, country: c.country,
     tripRole: tripRole.trim().slice(0, 80), addedBy: s.uid, addedByName: s.name.slice(0, 80), addedAt: serverTimestamp(),
   });
+  await setDoc(doc(db, "users", s.uid, "recentContacts", c.id), { usedAt: serverTimestamp() }).catch(() => undefined);
+}
 export const removeTripContact = (tripId: string, id: string) => deleteDoc(doc(db, "trips", tripId, "contacts", id));
+/** My most recently used book contacts (users/{uid}/recentContacts, written when I add one to a trip). */
+export function useRecentContactIds(s: Session): string[] | null {
+  const [ids, setIds] = useState<string[] | null>(null);
+  useEffect(() => onSnapshot(query(collection(db, "users", s.uid, "recentContacts"), orderBy("usedAt", "desc"), limit(5)),
+    (snap) => setIds(snap.docs.map((d) => d.id)), () => setIds([])), [s.uid]);
+  return ids;
+}
 
 // ---- HOST administration ------------------------------------------------------------------------
 
@@ -541,7 +553,7 @@ export function useControllerLiveTrips(s: Session): Trip[] | null {
         id: str(t.id), name: str(t.name), teamName: str(t.teamName), location: str(t.location), startDate: str(t.startDate), endDate: str(t.endDate),
         status: (t.status === "live" ? "live" : "planning") as TripStatus, cyberRisk: str(t.cyberRisk), cyberRationale: "", countryRisk: str(t.countryRisk),
         countryRationale: "", roles: (t.roles ?? {}) as Trip["roles"], memberUids: [], pendingEmails: [], requestId: null, createdByName: "", createdByEmail: "",
-        dipAgreed: false, dipAgreedDate: "", dipClassification: "", updatedByName: "", updatedAtMs: 0, createdAtMs: 0,
+        dipAgreed: false, dipAgreedDate: "", dipClassification: "", updatedByName: "", updatedAtMs: 0, createdAtMs: 0, pendingRequests: 0, pendingFlights: 0,
       })));
     }, () => { if (live) setList([]); });
     load();

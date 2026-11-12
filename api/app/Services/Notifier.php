@@ -19,6 +19,7 @@ final class Notifier
         'trip_added' => 'Added to a trip',
         'flight_added' => 'Booked on a flight',
         'message' => 'New message',
+        'spc_pending' => 'Awaiting your approval',
     ];
 
     /** Who to tell: the given people minus whoever caused it, without duplicates. */

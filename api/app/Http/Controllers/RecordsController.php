@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\SpcQueue;
 use App\Services\TripAccess;
 use App\Support\Clean;
 use Illuminate\Http\JsonResponse;
@@ -63,6 +64,7 @@ class RecordsController extends Controller
             'quantity' => $qty, 'amount' => $amount, 'currency' => $amount !== null ? $currency : '', 'needed_by' => $neededBy, 'status' => 'pending',
             'created_by' => $u->id, 'created_by_name' => self::nameOf($u), 'created_at' => now(), 'updated_at' => now(),
         ]);
+        SpcQueue::tell($t, $u->id, "Request to approve: {$title}", 'requests');
         return response()->json(['id' => $id], 201);
     }
 
@@ -87,6 +89,9 @@ class RecordsController extends Controller
         $n = $this->tlQuery($t->id, $id)->where('status', 'rejected')->where('created_by', $u->id)->update([
             'status' => 'pending', 'decided_by' => null, 'decided_by_name' => null, 'decided_at' => null, 'decision_note' => null, 'updated_at' => now(),
         ]);
+        if ($n) {
+            SpcQueue::tell($t, $u->id, 'Request resubmitted: ' . DB::table('tl_requests')->where('id', $id)->value('title'), 'requests');
+        }
         return $n ? response()->json(['ok' => true]) : $this->fail(403, "You can't resubmit this request.");
     }
 
@@ -316,6 +321,14 @@ class RecordsController extends Controller
             'added_by_name' => self::nameOf($u), 'added_at' => now(),
         ]], ['trip_id', 'contact_id'], ['name', 'organisation', 'job_title', 'email', 'phone', 'country', 'trip_role', 'added_by', 'added_by_name', 'added_at']);
         return response()->json(['ok' => true]);
+    }
+
+    /** My 5 most recently used book contacts: from the trips I added contacts to. */
+    public function recentContacts(Request $request): JsonResponse
+    {
+        $ids = DB::table('trip_contacts')->where('added_by', $this->me($request)->id)
+            ->groupBy('contact_id')->orderByRaw('max(added_at) desc')->limit(5)->pluck('contact_id');
+        return response()->json(['ids' => $ids]);
     }
 
     public function removeTripContact(Request $request, string $trip, string $contact): JsonResponse

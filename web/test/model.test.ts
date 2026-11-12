@@ -9,7 +9,7 @@ import {
 const trip = (o: Partial<Trip>): Trip => ({
   id: "t", name: "", teamName: "Alpha", location: "Paris, France", startDate: "2026-05-01", endDate: "2026-05-07", status: "planning",
   cyberRisk: "Low", cyberRationale: "", countryRisk: "Medium", countryRationale: "", roles: {}, memberUids: [], pendingEmails: [],
-  requestId: null, createdByName: "", createdByEmail: "", dipAgreed: false, dipAgreedDate: "", dipClassification: "", updatedByName: "", updatedAtMs: 0, createdAtMs: 0, ...o,
+  requestId: null, createdByName: "", createdByEmail: "", dipAgreed: false, dipAgreedDate: "", dipClassification: "", updatedByName: "", updatedAtMs: 0, createdAtMs: 0, pendingRequests: 0, pendingFlights: 0, ...o,
 });
 
 test("request validation", () => {
@@ -208,4 +208,23 @@ test("teams: validation, natural order and options keep a removed team", async (
   assert.deepEqual(sortTeams(teams).map((t) => t.name), ["T2", "T10", "T101"]);
   assert.deepEqual(teamOptions(teams, "Old Team"), ["Old Team", "T2", "T10", "T101"]);
   assert.deepEqual(teamOptions(teams, "T10"), ["T2", "T10", "T101"]);
+});
+
+test("SPC: whose approvals are waiting, and the label", async () => {
+  const { awaitingMySpcDecision, isSpcFor, pendingLabel } = await import("../src/model.ts");
+  const base = { id: "", name: "", teamName: "", location: "", endDate: "", cyberRisk: "", cyberRationale: "", countryRisk: "", countryRationale: "",
+    pendingEmails: [], requestId: null, dipAgreed: false, dipAgreedDate: "", dipClassification: "", updatedByName: "", updatedAtMs: 0,
+    createdByName: "", createdByEmail: "", createdAtMs: 0 };
+  const named = { ...base, id: "a", startDate: "2027-02-01", status: "planning" as const, roles: { spc: { name: "S", email: "", uid: "sam" } }, memberUids: ["sam"], pendingRequests: 2, pendingFlights: 1 };
+  const onTrip = { ...base, id: "b", startDate: "2027-01-01", status: "planning" as const, roles: {}, memberUids: ["pat"], pendingRequests: 1, pendingFlights: 0 };
+  const done = { ...onTrip, id: "c", pendingRequests: 0 };
+  const archived = { ...onTrip, id: "d", status: "archived" as const };
+  const sam = { uid: "sam", isHost: false, isSpcProfile: false };
+  const pat = { uid: "pat", isHost: false, isSpcProfile: true };
+  assert.equal(isSpcFor(named, sam), true);
+  assert.equal(isSpcFor(onTrip, sam), false);
+  assert.deepEqual(awaitingMySpcDecision([named, onTrip, done, archived], sam).map((t) => t.id), ["a"]);
+  assert.deepEqual(awaitingMySpcDecision([named, onTrip, done, archived], pat).map((t) => t.id), ["b"]);
+  assert.deepEqual(awaitingMySpcDecision([named, onTrip], { uid: "hal", isHost: true, isSpcProfile: true }).map((t) => t.id), ["b", "a"]);
+  assert.equal(pendingLabel(named), "2 requests · 1 flight");
 });

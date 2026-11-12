@@ -67,6 +67,9 @@ export interface Trip {
   dipAgreedDate: string;
   /** One of DIP_CLASSIFICATIONS, or "" when not set. */
   dipClassification: string;
+  /** Waiting for an SPC (kept by the server): requests awaiting approval, flights awaiting a decision. */
+  pendingRequests: number;
+  pendingFlights: number;
   /** Who last edited the trip record, and when (stamped on every client edit). */
   updatedByName: string;
   updatedAtMs: number;
@@ -116,6 +119,25 @@ export function validateRequest(r: RequestInput): Partial<Record<keyof RequestIn
   if (!isIsoDate(r.endDate)) e.endDate = "Choose the date you return.";
   if (!e.startDate && !e.endDate && r.endDate < r.startDate) e.endDate = "The return date is before the departure date.";
   return e;
+}
+
+/**
+ * Is this trip's outstanding approval work mine? (owner, 2026-11-12) Mirrors who may decide:
+ * the trip's named SPC, or an SPC-profile holder who can see the trip (on it, or HOST).
+ */
+export function isSpcFor(t: Pick<Trip, "roles" | "memberUids">, s: { uid: string; isHost: boolean; isSpcProfile: boolean }): boolean {
+  return t.roles.spc?.uid === s.uid || (s.isSpcProfile && (s.isHost || t.memberUids.includes(s.uid)));
+}
+export const pendingSpc = (t: Pick<Trip, "pendingRequests" | "pendingFlights">) => t.pendingRequests + t.pendingFlights;
+/** Trips with approvals waiting on me, soonest departure first; archived trips excluded. */
+export function awaitingMySpcDecision<T extends Trip>(trips: T[], s: { uid: string; isHost: boolean; isSpcProfile: boolean }): T[] {
+  return trips.filter((t) => t.status !== "archived" && pendingSpc(t) > 0 && isSpcFor(t, s))
+    .sort((a, b) => a.startDate.localeCompare(b.startDate));
+}
+/** "2 requests · 1 flight". */
+export function pendingLabel(t: Pick<Trip, "pendingRequests" | "pendingFlights">): string {
+  const part = (n: number, one: string) => (n ? `${n} ${one}${n === 1 ? "" : "s"}` : "");
+  return [part(t.pendingRequests, "request"), part(t.pendingFlights, "flight")].filter(Boolean).join(" · ");
 }
 
 export const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -743,6 +765,12 @@ export function cleanContact(c: ContactInput): { value: ContactInput; errors: Pa
 }
 
 /** Every word must appear in the contact's name, organisation, job title, email, phone or country. */
+/** The book entries for my most recently used contacts, newest first (ids from the store). */
+export function recentContacts<T extends { id: string }>(book: T[], ids: string[], limit = 5): T[] {
+  const byId = new Map(book.map((c) => [c.id, c]));
+  return ids.map((id) => byId.get(id)).filter((c): c is T => !!c).slice(0, limit);
+}
+
 export function contactMatches(c: Omit<ContactInput, "notes">, q: string): boolean {
   const words = q.toLowerCase().split(/\s+/).filter(Boolean);
   const hay = [c.name, c.organisation, c.jobTitle, c.email, c.phone, c.country].join(" ").toLowerCase();

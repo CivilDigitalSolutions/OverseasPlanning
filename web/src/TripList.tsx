@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Badge, Empty, Link, Loading } from "./components";
-import { dateRange, liveTrips, riskTone, todayIso, tripPhase, tripsFor, type TripStatus } from "./model";
+import { awaitingMySpcDecision, dateRange, isSpcFor, liveTrips, pendingLabel, pendingSpc, riskTone, todayIso, tripPhase, tripsFor, type TripStatus } from "./model";
 import { useControllerLiveTrips, useTrips, type Session } from "./store";
 
 const TITLES: Record<TripStatus, string> = { planning: "Planning", live: "Live trips", archived: "Archived trips" };
@@ -20,6 +20,8 @@ export function TripList({ session, status }: { session: Session; status: TripSt
   const today = todayIso();
   const merged = trips && live && controllerLive ? [...trips, ...controllerLive.filter((c) => !trips.some((t) => t.id === c.id))] : trips;
   const list = merged ? (live ? liveTrips(merged, today) : tripsFor(merged, status, searchable ? q : "")) : null;
+  // SPC (owner, 2026-11-12): trips with requests or flights waiting for my decision, shown first.
+  const awaiting = trips && status === "planning" ? awaitingMySpcDecision(trips, session) : [];
 
   return (
     <>
@@ -34,6 +36,24 @@ export function TripList({ session, status }: { session: Session; status: TripSt
           <input id="trip-search" type="search" placeholder="Search team, location, date, person…" value={q} onChange={(e) => setQ(e.target.value)} />
         </div>
       )}
+      {awaiting.length > 0 && (
+        <section className="card stack" style={{ gap: 8, marginBottom: 14, borderColor: "var(--warn)" }} aria-labelledby="spc-awaiting">
+          <h2 id="spc-awaiting" style={{ margin: 0 }}>Awaiting your approval</h2>
+          <ul className="list">
+            {awaiting.map((t) => (
+              <li key={t.id}>
+                <Link to={`/trips/${t.id}/${t.pendingRequests ? "requests" : "flights"}`} className="list-item">
+                  <span className="grow">
+                    <span className="title">{t.name || t.teamName}</span>
+                    <span className="muted small" style={{ display: "block" }}>{dateRange(t.startDate, t.endDate)}</span>
+                  </span>
+                  <Badge tone="warn">{pendingLabel(t)}</Badge>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
       {list === null ? <Loading /> : list.length === 0 ? <Empty>{q ? "No matches" : "No trips"}</Empty> : (
         <ul className="list">
           {list.map((t) => (
@@ -46,6 +66,7 @@ export function TripList({ session, status }: { session: Session; status: TripSt
                 <span className="stack" style={{ gap: 4, justifyItems: "end" }}>
                   {live && (() => { const ph = tripPhase(t, today); return <Badge tone={ph.tone}>{ph.label}</Badge>; })()}
                   {status === "planning" && t.status === "live" && <Badge tone="ok">Live</Badge>}
+                  {pendingSpc(t) > 0 && isSpcFor(t, session) && <Badge tone="warn">{pendingSpc(t)} awaiting you</Badge>}
                   {t.cyberRisk && <Badge tone={riskTone(t.cyberRisk)}>Cyber {t.cyberRisk}</Badge>}
                   {t.countryRisk && <Badge tone={riskTone(t.countryRisk)}>Country {t.countryRisk}</Badge>}
                 </span>

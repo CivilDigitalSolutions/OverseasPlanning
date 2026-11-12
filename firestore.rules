@@ -82,6 +82,11 @@ service cloud.firestore {
         allow create, update: if verified() && me() == uid && d().keys().hasOnly(['token', 'platform', 'updatedAt'])
           && reqStr(d(), 'token', 4096) && optStr(d(), 'platform', 200) && d().updatedAt == request.time;
       }
+      // My most recently used contacts (the contacts book opens on these; owner, 2026-11-12).
+      match /recentContacts/{contactId} {
+        allow read, delete: if signedIn() && me() == uid;
+        allow create, update: if verified() && me() == uid && d().keys().hasOnly(['usedAt']) && d().usedAt == request.time;
+      }
       match /tripReads/{tripId} {
         allow read: if signedIn() && me() == uid;
         allow write: if verified() && me() == uid && d().keys().hasOnly(['readAt']) && d().readAt == request.time;

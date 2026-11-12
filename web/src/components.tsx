@@ -44,6 +44,7 @@ export function TextField(p: BaseProps & {
   multiline?: boolean; rows?: number; maxLength?: number; inputMode?: "text" | "decimal" | "numeric" | "email"; disabled?: boolean;
 }) {
   const id = useId();
+  if (p.type === "date" || p.type === "datetime-local") return <DateField {...p} withTime={p.type === "datetime-local"} />;
   const common = {
     id, value: p.value, placeholder: p.placeholder, maxLength: p.maxLength, disabled: p.disabled, required: p.required,
     "aria-invalid": p.error ? true : undefined, "aria-describedby": p.error ? `${id}-e` : undefined,
@@ -96,6 +97,9 @@ export const Loading = () => <div className="empty" aria-busy="true">Loading…<
 export const Empty = ({ children }: { children: ReactNode }) => <div className="empty">{children}</div>;
 
 /** Dialog with focus trap-lite: focuses itself, Esc closes, backdrop click closes. */
+/** Open dialogs, innermost last: Escape closes only the top one (a date picker inside a form). */
+const modalStack: string[] = [];
+
 export function Modal({ title, onClose, children, actions }: { title: string; onClose: () => void; children: ReactNode; actions?: ReactNode }) {
   const ref = useRef<HTMLDivElement>(null);
   const id = useId();
@@ -103,11 +107,17 @@ export function Modal({ title, onClose, children, actions }: { title: string; on
     const prev = document.activeElement as HTMLElement | null;
     const first = ref.current?.querySelector<HTMLElement>("input, select, textarea, button:not(.icon-btn)");
     (first ?? ref.current)?.focus();
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    modalStack.push(id);
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape" && modalStack[modalStack.length - 1] === id) { e.stopPropagation(); onClose(); } };
     document.addEventListener("keydown", onKey);
     document.body.style.overflow = "hidden";
-    return () => { document.removeEventListener("keydown", onKey); document.body.style.overflow = ""; prev?.focus?.(); };
-  }, [onClose]);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      modalStack.splice(modalStack.indexOf(id), 1);
+      if (modalStack.length === 0) document.body.style.overflow = "";
+      prev?.focus?.();
+    };
+  }, [onClose, id]);
   return (
     <div className="modal-backdrop" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="modal" role="dialog" aria-modal="true" aria-labelledby={id} ref={ref} tabIndex={-1}>
@@ -162,6 +172,8 @@ const PATHS: Record<string, string> = {
   download: "M12 4v11M7 10l5 5 5-5M5 20h14",
   file: "M6 3h8l4 4v14H6zM14 3v4h4",
   back: "M15 5l-7 7 7 7",
+  next: "M9 5l7 7-7 7",
+  calendar: "M4 6h16v14H4zM4 10h16M8 3v4M16 3v4",
   check: "M5 12l5 5 9-10",
   user: "M12 12a4 4 0 100-8 4 4 0 000 8zM4 21a8 8 0 0116 0",
   logout: "M10 5H5v14h5M14 8l4 4-4 4M18 12H9",
@@ -183,3 +195,109 @@ export const relTime = (ms: number) => {
   if (!ms) return "";
   return new Date(ms).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 };
+
+// ---- Calendar date picker (owner, 2026-11-12): every date is picked from a calendar ---------------
+
+const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+const DAYS = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
+const pad2 = (n: number) => String(n).padStart(2, "0");
+const isoOf = (y: number, m: number, d: number) => `${y}-${pad2(m + 1)}-${pad2(d)}`;
+const todayParts = () => { const t = new Date(); return { y: t.getFullYear(), m: t.getMonth(), d: t.getDate() }; };
+
+/** "12 Nov 2026" / "12 Nov 2026, 21:10" (UK order). */
+export function formatPicked(v: string, withTime: boolean): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}))?$/.exec(v);
+  if (!m) return "";
+  const date = `${Number(m[3])} ${MONTHS[Number(m[2]) - 1].slice(0, 3)} ${m[1]}`;
+  return withTime && m[4] ? `${date}, ${m[4]}:${m[5]}` : date;
+}
+
+/** The days shown for a month: leading blanks so the 1st falls on its weekday (weeks start Monday). */
+export function monthCells(y: number, m: number): (number | null)[] {
+  const first = (new Date(y, m, 1).getDay() + 6) % 7;
+  const days = new Date(y, m + 1, 0).getDate();
+  return [...Array<null>(first).fill(null), ...Array.from({ length: days }, (_, i) => i + 1)];
+}
+
+function DateField(p: BaseProps & { value: string; onChange: (v: string) => void; placeholder?: string; disabled?: boolean; withTime: boolean }) {
+  const id = useId();
+  const [open, setOpen] = useState(false);
+  const shown = formatPicked(p.value, p.withTime);
+  return (
+    <div className="field">
+      <label htmlFor={id}>{p.label}</label>
+      <button id={id} type="button" className="date-input" disabled={p.disabled} onClick={() => setOpen(true)}
+        aria-invalid={p.error ? true : undefined} aria-describedby={p.error ? `${id}-e` : undefined} aria-haspopup="dialog">
+        <span className={shown ? "" : "placeholder"}>{shown || (p.withTime ? "Select date and time" : "Select date")}</span>
+        <Icon name="calendar" size={18} />
+      </button>
+      {p.hint && <span className="hint">{p.hint}</span>}
+      {p.error && <span className="error" id={`${id}-e`} role="alert">{p.error}</span>}
+      {open && <CalendarDialog title={p.label.replace(/\s*\*$/, "")} value={p.value} withTime={p.withTime}
+        onClose={() => setOpen(false)} onPick={(v) => { p.onChange(v); setOpen(false); }} />}
+    </div>
+  );
+}
+
+function CalendarDialog({ title, value, withTime, onClose, onPick }: {
+  title: string; value: string; withTime: boolean; onClose: () => void; onPick: (v: string) => void;
+}) {
+  const now = todayParts();
+  const cur = /^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}))?/.exec(value);
+  const [view, setView] = useState({ y: cur ? Number(cur[1]) : now.y, m: cur ? Number(cur[2]) - 1 : now.m });
+  const [day, setDay] = useState<string>(cur ? `${cur[1]}-${cur[2]}-${cur[3]}` : "");
+  const [hh, setHh] = useState(cur?.[4] ?? "09");
+  const [mm, setMm] = useState(cur?.[5] ?? "00");
+  const move = (delta: number) => setView((v) => { const d = new Date(v.y, v.m + delta, 1); return { y: d.getFullYear(), m: d.getMonth() }; });
+  const years = Array.from({ length: 31 }, (_, i) => now.y - 20 + i);
+  if (!years.includes(view.y)) years.push(view.y);
+  const pick = (d: string) => (withTime ? setDay(d) : onPick(d));
+  const today = isoOf(now.y, now.m, now.d);
+  return (
+    <Modal title={title} onClose={onClose} actions={<>
+      <button className="btn ghost" onClick={() => onPick("")}>Clear</button>
+      {!withTime && <button className="btn secondary" onClick={() => onPick(today)}>Today</button>}
+      {withTime && <button className="btn" disabled={!day} onClick={() => onPick(`${day}T${hh}:${mm}`)}>Done</button>}
+    </>}>
+      <div className="calendar">
+        <div className="cal-head">
+          <button type="button" className="icon-btn" aria-label="Previous month" onClick={() => move(-1)}><Icon name="back" /></button>
+          <select aria-label="Month" value={view.m} onChange={(e) => setView({ ...view, m: Number(e.target.value) })}>
+            {MONTHS.map((n, i) => <option key={n} value={i}>{n}</option>)}
+          </select>
+          <select aria-label="Year" value={view.y} onChange={(e) => setView({ ...view, y: Number(e.target.value) })}>
+            {years.sort((a, b) => a - b).map((y) => <option key={y} value={y}>{y}</option>)}
+          </select>
+          <button type="button" className="icon-btn" aria-label="Next month" onClick={() => move(1)}><Icon name="next" /></button>
+        </div>
+        <div className="cal-grid" role="grid" aria-label={`${MONTHS[view.m]} ${view.y}`}>
+          {DAYS.map((d) => <span key={d} className="cal-dow" aria-hidden="true">{d}</span>)}
+          {monthCells(view.y, view.m).map((d, i) => {
+            if (d === null) return <span key={`b${i}`} />;
+            const iso = isoOf(view.y, view.m, d);
+            return (
+              <button key={iso} type="button" className={`cal-day${iso === today ? " today" : ""}`} aria-pressed={iso === day}
+                aria-label={formatPicked(iso, false)} onClick={() => pick(iso)}>{d}</button>
+            );
+          })}
+        </div>
+        {withTime && (
+          <div className="row" style={{ gap: 8, marginTop: 12, alignItems: "end" }}>
+            <div className="field" style={{ flex: 1 }}>
+              <label htmlFor="cal-hh">Hour</label>
+              <select id="cal-hh" value={hh} onChange={(e) => setHh(e.target.value)}>
+                {Array.from({ length: 24 }, (_, i) => pad2(i)).map((h) => <option key={h}>{h}</option>)}
+              </select>
+            </div>
+            <div className="field" style={{ flex: 1 }}>
+              <label htmlFor="cal-mm">Minute</label>
+              <select id="cal-mm" value={mm} onChange={(e) => setMm(e.target.value)}>
+                {Array.from({ length: 60 }, (_, i) => pad2(i)).map((m) => <option key={m}>{m}</option>)}
+              </select>
+            </div>
+          </div>
+        )}
+      </div>
+    </Modal>
+  );
+}

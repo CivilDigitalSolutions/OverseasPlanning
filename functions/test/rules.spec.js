@@ -74,6 +74,25 @@ describe("trip requests", () => {
   });
 });
 
+describe("recent contacts (owner, 2026-11-12)", () => {
+  it("R1 only I read and write my recent contacts, stamped with server time", async () => {
+    await assertSucceeds(setDoc(doc(member(), "users", "alice", "recentContacts", "c1"), { usedAt: serverTimestamp() }));
+    await assertSucceeds(getDocs(collection(member(), "users", "alice", "recentContacts")));
+    await assertFails(getDocs(collection(outsider(), "users", "alice", "recentContacts")));
+    await assertFails(setDoc(doc(outsider(), "users", "alice", "recentContacts", "c1"), { usedAt: serverTimestamp() }));
+    await assertFails(setDoc(doc(member(), "users", "alice", "recentContacts", "c2"), { usedAt: serverTimestamp(), note: "x" }));
+  });
+});
+
+describe("SPC outstanding counts (owner, 2026-11-12)", () => {
+  const ed = (uid, o) => ({ ...o, updatedAt: serverTimestamp(), updatedBy: uid, updatedByName: uid });
+  it("P1 the pending counts are functions-only: nobody (not even the SPC or HOST) sets them from the app", async () => {
+    await assertFails(updateDoc(doc(member(), "trips", TRIP), ed("alice", { pendingRequests: 0, pendingFlights: 0 })));
+    await assertFails(updateDoc(doc(spc(), "trips", TRIP), ed("spc", { pendingRequests: 0 })));
+    await assertFails(updateDoc(doc(host(), "trips", TRIP), ed("host", { pendingFlights: 0 })));
+  });
+});
+
 describe("teams (owner, 2026-11-12)", () => {
   const admin = () => as("ada", { admin: true });
   const team = (name, by = "ada") => ({ name, createdBy: by, createdAt: serverTimestamp() });

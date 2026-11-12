@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Services\Membership;
 use App\Services\Notifier;
+use App\Services\SpcQueue;
 use App\Services\TripAccess;
 use App\Support\Clean;
 use App\Support\ItemSchemas;
@@ -65,6 +66,7 @@ class ItemController extends Controller
         ]);
         if ($kind === 'flights') {
             $this->afterFlightWrite($t, [], $values, $u->id);
+            SpcQueue::tell($t, $u->id, 'Flight to approve: ' . Membership::flightLabel($values), 'flights');
         }
         return response()->json(['id' => $id], 201);
     }
@@ -90,6 +92,10 @@ class ItemController extends Controller
         ]);
         if ($kind === 'flights') {
             $this->afterFlightWrite($t, json_decode($item->values, true) ?: [], $values, $u->id);
+            // The edit cleared a decision, so the flight needs the SPC again.
+            if ($item->spc_decision !== null) {
+                SpcQueue::tell($t, $u->id, 'Changed flight to approve again: ' . Membership::flightLabel($values), 'flights');
+            }
         }
         return response()->json(['ok' => true]);
     }
