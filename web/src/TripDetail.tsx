@@ -37,7 +37,7 @@ const TABS = [
   { key: "attachments", label: "Attachments" },
   { key: "vaccinations", label: "Vaccinations" },
   { key: "contacts", label: "Contacts" },
-  { key: "access", label: "Access" },
+  { key: "access", label: "People" },
   { key: "debrief", label: "Debrief" },
 ] as const;
 

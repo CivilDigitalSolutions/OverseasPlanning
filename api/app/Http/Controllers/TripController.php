@@ -369,11 +369,13 @@ class TripController extends Controller
         return response()->json(['status' => $status]);
     }
 
-    /** HOST removes ADDITIONAL access; people in a role, on a flight or the requester keep theirs. */
+    /**
+     * Anyone on the trip (or HOST) removes ADDITIONAL access (owner, 2026-11-12; was HOST only).
+     * People in a role, on a flight or the requester keep theirs — the answer says so.
+     */
     public function removeAccess(Request $request, string $trip): JsonResponse
     {
         $u = $this->me($request);
-        TripAccess::needHost($u);
         $t = TripAccess::needView($u, $trip);
         $uid = $request->input('uid');
         $email = Clean::email($request->input('email'));

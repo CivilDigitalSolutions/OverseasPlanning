@@ -136,4 +136,30 @@ class AccessControlTest extends TestCase
         $this->assertSame('secret plan', $res->streamedContent());
         $this->actingAs($eve)->get($this->api("trips/{$trip}/attachments/{$att->id}/download"))->assertNotFound();
     }
+
+    public function test_anyone_on_the_trip_adds_and_removes_additional_access_but_not_roles(): void
+    {
+        $ann = $this->person('Ann Requester');
+        $tia = $this->person('Tia Leader');
+        $xan = $this->person('Xan Extra');
+        $eve = $this->person('Eve Outsider');
+        $trip = $this->trip($ann, ['teamLeader' => $tia]);
+
+        $this->actingAs($ann)->postJson($this->api("trips/{$trip}/access"), ['uid' => $xan->id])->assertJsonPath('status', 'added');
+        $this->actingAs($xan)->getJson($this->api("trips/{$trip}"))->assertOk();
+        $this->actingAs($ann)->postJson($this->api("trips/{$trip}/access"), ['uid' => $tia->id])->assertJsonPath('status', 'already');
+
+        // An outsider cannot remove anyone (cross-trip denial).
+        $this->actingAs($eve)->postJson($this->api("trips/{$trip}/access/remove"), ['uid' => $xan->id])->assertNotFound();
+        // A member (not HOST) removes additional access.
+        $this->actingAs($tia)->postJson($this->api("trips/{$trip}/access/remove"), ['uid' => $xan->id])->assertOk()->assertJsonPath('stillOnTripAs', []);
+        $this->actingAs($xan)->getJson($this->api("trips/{$trip}"))->assertNotFound();
+        // A role holder keeps access, and the answer says why.
+        $this->actingAs($ann)->postJson($this->api("trips/{$trip}/access/remove"), ['uid' => $tia->id])->assertOk()->assertJsonPath('stillOnTripAs', ['Team Leader']);
+        $this->actingAs($tia)->getJson($this->api("trips/{$trip}"))->assertOk();
+        // Pending email invitations can be cancelled too.
+        $this->actingAs($ann)->postJson($this->api("trips/{$trip}/access"), ['email' => 'later@example.org'])->assertJsonPath('status', 'pending');
+        $this->actingAs($tia)->postJson($this->api("trips/{$trip}/access/remove"), ['email' => 'later@example.org'])->assertOk();
+        $this->assertFalse(DB::table('trip_pending_emails')->where('trip_id', $trip)->exists());
+    }
 }

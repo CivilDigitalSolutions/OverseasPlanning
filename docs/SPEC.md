@@ -102,9 +102,16 @@ every *live* trip's basic details and team messages, and can post there; nothing
   (`functions/src/lib/membership.ts`, mirrored in `web/src/membership.ts`) after every change:
   trip creation, role edits, additional access added/removed, a pending email signing up, and any
   change to who is booked on a flight (`onFlightWritten` trigger). Someone taken off a role or a
-  flight therefore **loses access** unless they're still on the trip another way. The Access tab
-  shows each person's reasons ("Requester", "Team Leader", "On flight TP1351", "Additional access").
-- Additional access is kept in `extraAccessUids` / `extraAccessEmails`; HOST removes it. Older
+  flight therefore **loses access** unless they're still on the trip another way. The **People** tab
+  (was "Access") lists everyone on the trip with their role(s) as badges ("Requester", "Team
+  Leader", "On flight TP1351", "Additional access") and pending email invitations.
+- **Adding people without a role or flight** (owner, 2026-11-12): anyone on the trip adds a person
+  from the directory, or invites by email (access on sign-up). **Anyone on the trip removes
+  additional access** (was HOST only) with a Remove button shown only for people who are there
+  purely through additional access, and for pending invitations. Role holders, flight passengers
+  and the requester cannot be removed there — change the role or the flight; if someone also has
+  a role, removing additional access tells you they stay as that role.
+- Additional access is kept in `extraAccessUids` / `extraAccessEmails`. Older
   trips without those fields keep everyone they had as additional access.
 - **In-app directory** (`directory/{uid}`: name + sign-in email, each person writes only their own,
   everyone signed in can search it): people pickers for flight passengers, roles and Access.

@@ -1,7 +1,7 @@
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { onDocumentCreated, onDocumentWritten } from "firebase-functions/v2/firestore";
 import { FieldValue, getFirestore } from "firebase-admin/firestore";
-import { assertHost, assertTripAccess, assertVerified } from "./lib/auth";
+import { assertTripAccess, assertVerified } from "./lib/auth";
 import { MAX_MEMBERS, MAX_PENDING, verifiedUidFor } from "./lib/access";
 import { flightLabel, recomputeTripAccess } from "./lib/membership";
 import { notify, recipients } from "./lib/notify";
@@ -50,13 +50,16 @@ export const addTripAccess = onCall(async (req) => {
 });
 
 /**
- * HOST removes ADDITIONAL access (a person or a pending email). Someone in a role, on a flight or
- * who requested the trip keeps access; the result says so.
+ * Anyone on the trip (or HOST) removes ADDITIONAL access — a person or a pending email (owner,
+ * 2026-11-12; was HOST only). Someone in a role, on a flight or who requested the trip keeps
+ * access; the result says so.
  */
 export const removeTripAccess = onCall(async (req) => {
-  assertHost(req);
+  const { uid: actor } = assertVerified(req);
+  await rateLimit("removeTripAccess", actor, 60, 3600_000);
   const tripId = req.data?.tripId;
   if (!isDocId(tripId)) throw new HttpsError("invalid-argument", "Unknown trip.");
+  await assertTripAccess(req, tripId);
   const db = getFirestore();
   const ref = db.collection("trips").doc(tripId);
   if (isUid(req.data?.uid)) await ref.update({ extraAccessUids: FieldValue.arrayRemove(req.data.uid) });
