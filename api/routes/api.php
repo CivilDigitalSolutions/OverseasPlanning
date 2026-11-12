@@ -7,6 +7,7 @@ use App\Http\Controllers\MessageController;
 use App\Http\Controllers\PasskeyController;
 use App\Http\Controllers\PeopleController;
 use App\Http\Controllers\RecordsController;
+use App\Http\Controllers\TeamController;
 use App\Http\Controllers\TripController;
 use Illuminate\Support\Facades\Route;
 
@@ -42,6 +43,10 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::delete('passkeys/{id}', [PasskeyController::class, 'destroy']);
 
         Route::get('directory', [PeopleController::class, 'directory']);
+        Route::get('teams', [TeamController::class, 'index']);
+        Route::post('teams', [TeamController::class, 'store']);
+        Route::put('teams/{id}', [TeamController::class, 'update']);
+        Route::delete('teams/{id}', [TeamController::class, 'destroy']);
         Route::get('contacts', [PeopleController::class, 'contacts']);
         Route::post('contacts', [PeopleController::class, 'saveContact']);
         Route::put('contacts/{id}', [PeopleController::class, 'saveContact']);

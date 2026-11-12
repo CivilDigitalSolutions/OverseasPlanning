@@ -37,6 +37,7 @@ beforeEach(async () => {
   await env.clearFirestore();
   await env.withSecurityRulesDisabled(async (ctx) => {
     const db = ctx.firestore();
+    for (const t of ["Team", "Team B", "T101"]) await setDoc(doc(db, "teams", t), { name: t, createdBy: "admin" });
     await setDoc(doc(db, "trips", TRIP), tripDoc(["alice", "lead", "spc"]));
     await setDoc(doc(db, "trips", OTHER), tripDoc(["bob"]));
     await setDoc(doc(db, "tripRequests", "r1"), { teamName: "A", startDate: "2026-01-01", endDate: "2026-01-02", location: "X", requesterUid: "alice", requesterEmail: "alice@x.com", status: "submitted" });
@@ -70,6 +71,37 @@ describe("trip requests", () => {
     await assertFails(updateDoc(doc(member(), "tripRequests", "r1"), { status: "declined", decidedAt: serverTimestamp() }));
     await assertFails(updateDoc(doc(host(), "tripRequests", "r1"), { status: "accepted", decidedAt: serverTimestamp() }));
     await assertSucceeds(updateDoc(doc(host(), "tripRequests", "r1"), { status: "declined", declineReason: "No", decidedAt: serverTimestamp() }));
+  });
+});
+
+describe("teams (owner, 2026-11-12)", () => {
+  const admin = () => as("ada", { admin: true });
+  const team = (name, by = "ada") => ({ name, createdBy: by, createdAt: serverTimestamp() });
+  const ed = (uid, o) => ({ ...o, updatedAt: serverTimestamp(), updatedBy: uid, updatedByName: uid });
+  it("T1 everyone verified reads the list; unverified cannot", async () => {
+    await assertSucceeds(getDocs(collection(member(), "teams")));
+    await assertFails(getDocs(collection(unverified(), "teams")));
+  });
+  it("T2 only Administrators add and remove teams — not HOST, not members", async () => {
+    await assertSucceeds(setDoc(doc(admin(), "teams", "T102"), team("T102")));
+    await assertFails(setDoc(doc(host(), "teams", "T103"), team("T103", "host")));
+    await assertFails(setDoc(doc(member(), "teams", "T104"), team("T104", "alice")));
+    await assertFails(deleteDoc(doc(host(), "teams", "T101")));
+    await assertSucceeds(deleteDoc(doc(admin(), "teams", "T101")));
+  });
+  it("T3 the id must be the name; no edits in place; no stray fields", async () => {
+    await assertFails(setDoc(doc(admin(), "teams", "T105"), team("Other")));
+    await assertFails(setDoc(doc(admin(), "teams", "T105"), { ...team("T105"), colour: "red" }));
+    await assertFails(updateDoc(doc(admin(), "teams", "Team"), { name: "Team" }));
+  });
+  it("T4 a trip request must name a team from the list", async () => {
+    await assertFails(addDoc(collection(member(), "tripRequests"), { ...goodRequest(), teamName: "Made Up" }));
+    await assertSucceeds(addDoc(collection(member(), "tripRequests"), { ...goodRequest(), teamName: "T101" }));
+  });
+  it("T5 changing a trip's team needs a listed team; a removed team stays on old trips", async () => {
+    await assertFails(updateDoc(doc(member(), "trips", TRIP), ed("alice", { teamName: "Made Up" })));
+    await assertSucceeds(updateDoc(doc(member(), "trips", TRIP), ed("alice", { location: "Lyon" }))); // keeps unlisted "Alpha"
+    await assertSucceeds(updateDoc(doc(member(), "trips", TRIP), ed("alice", { teamName: "T101" })));
   });
 });
 

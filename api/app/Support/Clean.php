@@ -36,6 +36,16 @@ final class Clean
         return mb_substr(trim($s), 0, $max);
     }
 
+    /** A team name (also used as a Firestore id in the Firebase build): letters, digits, space . _ - */
+    public static function teamName(mixed $raw): ?string
+    {
+        if (!is_string($raw)) {
+            return null;
+        }
+        $n = preg_replace('/\s+/', ' ', trim($raw)) ?? '';
+        return preg_match('/^[A-Za-z0-9][A-Za-z0-9 ._-]{0,39}$/', $n) ? $n : null;
+    }
+
     public static function isId(mixed $raw): bool
     {
         return is_string($raw) && preg_match(self::ID_RE, $raw) === 1 && !preg_match('/^__.*__$/', $raw);

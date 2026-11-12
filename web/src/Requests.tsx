@@ -1,11 +1,11 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Badge, Confirm, Empty, Link, Loading, Notice, SelectField, TextField, errorText, navigate } from "./components";
 import {
-  EMAIL_RE, RISK_LEVELS, TRIP_ROLES, dateRange, validateRequest,
+  EMAIL_RE, RISK_LEVELS, TRIP_ROLES, dateRange, teamOptions, validateRequest,
   type RequestInput, type RoleHolder, type TripRequest, type TripRoleKey,
 } from "./model";
 import { RolePersonFields } from "./PeoplePicker";
-import { createTrip, declineRequest, myTripReasons, submitRequest, useRequest, type Session } from "./store";
+import { createTrip, declineRequest, myTripReasons, submitRequest, useRequest, useTeams, type Session } from "./store";
 
 const STATUS = { submitted: { tone: "warn", label: "Awaiting triage" }, accepted: { tone: "ok", label: "Trip created" }, declined: { tone: "bad", label: "Declined" } } as const;
 
@@ -16,6 +16,7 @@ export function NewRequest({ session }: { session: Session }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const set = (k: keyof RequestInput) => (v: string) => setR({ ...r, [k]: v });
+  const teams = useTeams();
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -30,7 +31,8 @@ export function NewRequest({ session }: { session: Session }) {
     <>
       <div className="page-head"><h1>New trip request</h1></div>
       <form className="card stack" onSubmit={submit} noValidate>
-        <TextField label="Team name" placeholder="e.g. Northern Region Team" value={r.teamName} onChange={set("teamName")} error={errors.teamName} maxLength={80} />
+        <SelectField label="Team" value={r.teamName} onChange={set("teamName")} options={teamOptions(teams ?? [])}
+          placeholder={teams && teams.length === 0 ? "No teams set up yet" : "Select team"} disabled={!teams?.length} error={errors.teamName} />
         <div className="grid2">
           <TextField label="Departure date" type="date" value={r.startDate} onChange={set("startDate")} error={errors.startDate} />
           <TextField label="Return date" type="date" value={r.endDate} onChange={set("endDate")} error={errors.endDate} />

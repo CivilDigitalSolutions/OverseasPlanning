@@ -32,6 +32,11 @@ service cloud.firestore {
     function isLead(tripId) { return isHost() || (verified() && leaderUidOf(trip(tripId)) == me()); }
     /** Controller role profile: sees every LIVE trip's basic details and messages (owner, 2026-11-10). */
     function isController() { return verified() && request.auth.token.get('controller', false) == true; }
+    function isAdmin() { return verified() && request.auth.token.get('admin', false) == true; }
+    /** A team from the administrators' list (owner, 2026-11-12): teams/{name}, the id IS the name. */
+    function teamExists(n) {
+      return n is string && n.matches('^[A-Za-z0-9][A-Za-z0-9 ._-]{0,39}$') && exists(/databases/$(database)/documents/teams/$(n));
+    }
     /** Live window (mirrors functions/src/lib/live.ts and web model liveTrips): not archived, and
      *  marked Live or starting within 10 days (so trips under way or over-but-not-archived count). */
     function isLiveTrip(t) {
@@ -90,7 +95,7 @@ service cloud.firestore {
         && d().keys().hasOnly(['teamName', 'startDate', 'endDate', 'location', 'requesterUid', 'requesterName', 'requesterEmail', 'status', 'createdAt'])
         && d().requesterUid == me() && d().requesterEmail == request.auth.token.email
         && d().status == 'submitted' && d().createdAt == request.time
-        && reqStr(d(), 'teamName', 80) && reqStr(d(), 'location', 120) && optStr(d(), 'requesterName', 80)
+        && reqStr(d(), 'teamName', 80) && teamExists(d().teamName) && reqStr(d(), 'location', 120) && optStr(d(), 'requesterName', 80)
         && isoDate(d().startDate) && isoDate(d().endDate) && d().endDate >= d().startDate;
       // HOST may decline; accepting happens in createTrip (it creates the trip in the same transaction).
       allow update: if isHost() && resource.data.status == 'submitted'
@@ -138,7 +143,9 @@ service cloud.firestore {
       }
       // Every client edit is stamped with who made it and when.
       allow update: if d().updatedAt == request.time && d().updatedBy == me()
-        && d().status in ['planning', 'live', 'archived'] && validDip(d()) && validOverview(d()) && (
+        && d().status in ['planning', 'live', 'archived'] && validDip(d()) && validOverview(d())
+        // A changed team must come from the list; trips keep a team that was later removed.
+        && (!changed().hasAny(['teamName']) || teamExists(d().teamName)) && (
         // Anyone on the trip (and HOST) edits the overview fields.
         ((isHost() || (verified() && me() in resource.data.memberUids)) && changed().hasOnly(overviewKeys()))
         // Status moves only by HOST or the Team Leader (who may change overview fields in the same write).
@@ -308,6 +315,16 @@ service cloud.firestore {
         allow write: if onTrip(tripId) && me() == uid && d().keys().hasOnly(['name', 'text', 'updatedAt'])
           && optStr(d(), 'name', 80) && optStr(d(), 'text', 5000) && d().updatedAt == request.time;
       }
+    }
+
+    // ---- teams (owner, 2026-11-12): the team dropdown, managed by Administrators only ----------
+    match /teams/{teamId} {
+      allow read: if verified();
+      allow create: if isAdmin() && d().keys().hasOnly(['name', 'createdBy', 'createdAt'])
+        && d().name == teamId && teamId.matches('^[A-Za-z0-9][A-Za-z0-9 ._-]{0,39}$')
+        && d().createdBy == me() && d().createdAt == request.time;
+      allow update: if false; // rename = create the new name + delete the old one
+      allow delete: if isAdmin();
     }
 
     // ---- global contacts book (owner, 2026-11-10) ---------------------------------------------

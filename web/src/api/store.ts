@@ -10,7 +10,7 @@ import { api, clearPolls, onSessionLost, refresh, resetCsrf, usePoll } from "./c
 import {
   type ChatMessage, type Contact, type ContactInput, type Debrief, EMPTY_DEBRIEF, type FinanceEntry, MAX_ATTACHMENT_BYTES, type RequestInput,
   type RoleHolder, type TlRequest, toRequestStatus, type Trip, type TripContact, type TripRequest, type TripRoleKey, type TripStatus,
-  type VaccinationDeclaration, type VaccineRecord,
+  type VaccinationDeclaration, type VaccineRecord, type Team, cleanTeamName, sortTeams,
 } from "../model";
 
 /** Kept for the passkeys module's signature; the API has no generic callable endpoint. */
@@ -284,6 +284,17 @@ export const addContactToTrip = (_s: Session, tripId: string, c: Contact, tripRo
   api("PUT", `${T(tripId)}/contacts/${encodeURIComponent(c.id)}`, { tripRole: tripRole.trim().slice(0, 80) }).then(() => refresh(`${T(tripId)}/contacts`));
 export const removeTripContact = (tripId: string, id: string) =>
   api("DELETE", `${T(tripId)}/contacts/${encodeURIComponent(id)}`).then(() => refresh(`${T(tripId)}/contacts`));
+
+// ---- Teams (owner, 2026-11-12) -----------------------------------------------------------------
+
+export function useTeams(): Team[] | null {
+  return usePoll("teams", (j) => sortTeams(j.teams as Team[]), [], 120_000);
+}
+export const addTeam = (_s: Session, name: string) => api("POST", "teams", { name: cleanTeamName(name) }).then(() => refresh("teams"));
+/** Trips keep the name they were given; only the list changes. */
+export const renameTeam = (_s: Session, team: Team, name: string) =>
+  api("PUT", `teams/${encodeURIComponent(team.id)}`, { name: cleanTeamName(name) }).then(() => refresh("teams"));
+export const deleteTeam = (id: string) => api("DELETE", `teams/${encodeURIComponent(id)}`).then(() => refresh("teams"));
 
 // ---- Administration ---------------------------------------------------------------------------
 

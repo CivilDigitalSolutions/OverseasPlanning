@@ -9,6 +9,7 @@ import {
   EMPTY_DEBRIEF, MAX_ATTACHMENT_BYTES, PRIVACY_VERSION, REQUEST_KINDS, TERMS_VERSION,
   type ChatMessage, type Contact, type ContactInput, type TripContact, type Debrief, type FinanceEntry, type RequestInput, type RequestKind, type RoleHolder, type TlRequest,
   toRequestStatus, type Trip, type TripRequest, type TripRoleKey, type TripStatus, type VaccinationDeclaration, type VaccineRecord,
+  type Team, cleanTeamName, sortTeams,
 } from "../model";
 import { DELETE, be, type QuerySpec, type Snap } from "./backend";
 import { computeAccess, flightLabel, type AccessInput, type Person } from "../membership";
@@ -115,6 +116,28 @@ export function useDirectory(): DirectoryPerson[] | null {
   return list ? list.filter((p) => p.ok && p.name).map(({ uid, name, email, spc }) => ({ uid, name, email, spc })) : null;
 }
 export const upsertDirectory = async (_s: Session) => undefined; // demo: accounts are the directory
+
+// ---- Teams (owner, 2026-11-12). The demo starts with a few sample teams so the dropdown has options.
+const SAMPLE_TEAMS = ["T101", "T102", "T103", "T104", "T105"];
+let teamsSeeded = false;
+export function useTeams(): Team[] | null {
+  const list = useColl("teams", {}, (s) => ({ id: s.id, name: str(s.data.name) || s.id }));
+  useEffect(() => {
+    if (list && list.length === 0 && !teamsSeeded) {
+      teamsSeeded = true;
+      void be().get("meta/teamsSeeded").then((d) => d ? undefined : Promise.all([
+        be().set("meta/teamsSeeded", { at: now() }), ...SAMPLE_TEAMS.map((n) => be().set(`teams/${n}`, { name: n })),
+      ]));
+    }
+  }, [list]);
+  return list ? sortTeams(list) : null;
+}
+export const addTeam = (s: Session, name: string) => be().set(`teams/${cleanTeamName(name)}`, { name: cleanTeamName(name), createdBy: s.uid, createdAt: now() });
+export async function renameTeam(s: Session, team: Team, name: string) {
+  await addTeam(s, name);
+  if (cleanTeamName(name) !== team.id) await be().del(`teams/${team.id}`);
+}
+export const deleteTeam = (id: string) => be().del(`teams/${id}`);
 
 /** Recompute who is part of a trip from requester, roles, flight passengers and additional access. */
 export async function recomputeAccess(tripId: string, skipNotify: string[] = []) {

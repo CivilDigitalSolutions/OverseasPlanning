@@ -41,6 +41,14 @@ A mobile-first, installable web app (PWA) to request, plan, run and debrief over
   directory and their passkeys; agreement records and requests are kept for the audit trail).
   An administrator cannot remove their own Administrator permission or delete themselves.
   Callables: `listAccounts`, `createAccount`, `setAccountRoles`, `deleteAccount` (admin only).
+- **Teams** (owner, 2026-11-12): the team on a trip request (and on a trip's Overview) is chosen
+  from a **dropdown** of teams (e.g. T101, T102), shown in natural order (T2, T10, T101). Only
+  **Administrators** add, rename and remove teams — Settings cog → **Teams** tab. Names: letters,
+  digits, spaces, dots, dashes, up to 40, unique ignoring case. Renaming or removing a team does
+  not change requests or trips already raised; a trip keeps a removed team until someone picks a
+  listed one. Enforced server-side: Firestore rules (`teams/{name}`, admin claim; requests and team
+  changes must name an existing team) and the Laravel API (`TeamController`). The real team list
+  is entered by an administrator — none is shipped (the demo starts with T101–T105 as samples).
 
 ### 2a. Terms of Use — TODO(owner)
 ### 2b. Privacy Policy — TODO(owner)
@@ -48,7 +56,7 @@ A mobile-first, installable web app (PWA) to request, plan, run and debrief over
 
 ## 3. Trip lifecycle
 
-1. **Request** — anyone signed in submits: team name, departure date, return date, location.
+1. **Request** — anyone signed in submits: team (from the administrators' list), departure date, return date, location.
 2. **Triage (HOST)** — HOST sees requests awaiting triage, then either declines (with a reason
    shown to the requester) or **creates the trip** on one screen:
    - Cyber risk (drop-down) + rationale; Country risk (drop-down) + rationale.
@@ -114,6 +122,7 @@ every *live* trip's basic details and team messages, and can post there; nothing
 users/{uid}                         name, email, createdAt; lastAgreementAt/termsVersion/privacyVersion (functions)
 users/{uid}/agreements/{id}         functions-only, append-only agreement records
 users/{uid}/tripReads/{tripId}      readAt (unread line in messages)
+teams/{name}                        name, createdBy, createdAt (id = name; Administrators only write)
 tripRequests/{id}                   teamName, startDate, endDate, location, requester*, status submitted|accepted|declined, tripId, declineReason
 trips/{tripId}                      name, teamName, location, startDate, endDate, status planning|live|archived,
                                     cyberRisk, cyberRationale, countryRisk, countryRationale,

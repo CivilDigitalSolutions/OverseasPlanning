@@ -8,12 +8,12 @@ import { ItemsTab } from "./ItemsTab";
 import { MessagesTab } from "./MessagesTab";
 import { RolePersonFields } from "./PeoplePicker";
 import {
-  DIP_CLASSIFICATIONS, EMAIL_RE, ITEM_SCHEMAS, RISK_LEVELS, TRIP_ROLES, TRIP_STATUSES, dateRange, openCount, riskTone, statusHint, todayIso,
+  DIP_CLASSIFICATIONS, EMAIL_RE, ITEM_SCHEMAS, RISK_LEVELS, TRIP_ROLES, TRIP_STATUSES, dateRange, openCount, riskTone, statusHint, teamOptions, todayIso,
   type RoleHolder, type Trip, type TripRoleKey, type TripStatus,
 } from "./model";
 import { exportTripPdf } from "./pdf";
 import { RequestsTab } from "./RequestsTab";
-import { setDipAgreed, setDipClassification, setTripStatus, updateTripOverview, updateTripRoles, useTlRequests, useTrip, type Session } from "./store";
+import { setDipAgreed, setDipClassification, setTripStatus, updateTripOverview, updateTripRoles, useTeams, useTlRequests, useTrip, type Session } from "./store";
 import { VaccinationsTab } from "./VaccinationsTab";
 
 export interface TripCtx {
@@ -209,6 +209,7 @@ function RiskEditor({ trip, onClose }: { trip: Trip; onClose: () => void }) {
 
 function TripEditor({ trip, onClose }: { trip: Trip; onClose: () => void }) {
   const [v, setV] = useState({ name: trip.name, teamName: trip.teamName, location: trip.location, startDate: trip.startDate, endDate: trip.endDate });
+  const teams = useTeams();
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
   const set = (k: keyof typeof v) => (x: string) => setV({ ...v, [k]: x });
@@ -224,7 +225,7 @@ function TripEditor({ trip, onClose }: { trip: Trip; onClose: () => void }) {
     <Modal title="Edit trip" onClose={onClose} actions={<SaveCancel onClose={onClose} onSave={save} busy={busy} />}>
       <div className="stack">
         <TextField label="Trip name" value={v.name} onChange={set("name")} maxLength={120} placeholder="Trip name" />
-        <TextField label="Team" value={v.teamName} onChange={set("teamName")} maxLength={80} placeholder="Team name" />
+        <SelectField label="Team" value={v.teamName} onChange={set("teamName")} options={teamOptions(teams ?? [], trip.teamName)} placeholder="Select team" />
         <TextField label="Location" value={v.location} onChange={set("location")} maxLength={120} placeholder="City, country" />
         <div className="grid2">
           <TextField label="Departure date" type="date" value={v.startDate} onChange={set("startDate")} />

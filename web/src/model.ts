@@ -108,7 +108,7 @@ export interface RequestInput {
 /** Returns a message per invalid field (empty object = valid). Mirrors firestore.rules tripRequests. */
 export function validateRequest(r: RequestInput): Partial<Record<keyof RequestInput, string>> {
   const e: Partial<Record<keyof RequestInput, string>> = {};
-  if (!r.teamName.trim()) e.teamName = "Enter your team name.";
+  if (!r.teamName.trim()) e.teamName = "Choose your team.";
   else if (r.teamName.trim().length > 80) e.teamName = "Keep the team name under 80 characters.";
   if (!r.location.trim()) e.location = "Enter where you are travelling to.";
   else if (r.location.trim().length > 120) e.location = "Keep the location under 120 characters.";
@@ -119,6 +119,29 @@ export function validateRequest(r: RequestInput): Partial<Record<keyof RequestIn
 }
 
 export const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// ---- Teams (owner, 2026-11-12): picked from a list managed by administrators ---------------------
+
+export interface Team { id: string; name: string }
+/** Team names are also Firestore document ids, so: letters, digits, space, dot, dash, underscore. */
+export const TEAM_NAME_RE = /^[A-Za-z0-9][A-Za-z0-9 ._-]{0,39}$/;
+export const cleanTeamName = (raw: string) => raw.trim().replace(/\s+/g, " ");
+/** Error for a new/renamed team, or "" when it is fine. Names are unique ignoring case. */
+export function validateTeamName(raw: string, teams: Team[], exceptId: string | null = null): string {
+  const name = cleanTeamName(raw);
+  if (!name) return "Enter a team name.";
+  if (!TEAM_NAME_RE.test(name)) return "Use letters, numbers, spaces, dots or dashes (up to 40).";
+  if (teams.some((t) => t.id !== exceptId && t.name.toLowerCase() === name.toLowerCase())) return "That team already exists.";
+  return "";
+}
+/** T2 before T10 before T101. */
+export const sortTeams = <T extends { name: string }>(teams: T[]): T[] =>
+  [...teams].sort((a, b) => a.name.localeCompare(b.name, "en-GB", { numeric: true, sensitivity: "base" }));
+/** Dropdown options: the managed list, plus the trip's current team if it has since been removed. */
+export function teamOptions(teams: Team[], current = ""): string[] {
+  const names = sortTeams(teams).map((t) => t.name);
+  return current && !names.includes(current) ? [current, ...names] : names;
+}
 export const normaliseEmail = (s: string) => s.trim().toLowerCase();
 
 // ---- Search (archived trips) ----------------------------------------------------------------------

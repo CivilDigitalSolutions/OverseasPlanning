@@ -54,12 +54,15 @@ class TripController extends Controller
     {
         $u = $this->me($request);
         $d = $request->validate([
-            'teamName' => ['required', 'string', 'max:80'], 'location' => ['required', 'string', 'max:120'],
+            'teamName' => ['required', 'string', 'max:40'], 'location' => ['required', 'string', 'max:120'],
             'startDate' => ['required', 'date_format:Y-m-d'], 'endDate' => ['required', 'date_format:Y-m-d', 'after_or_equal:startDate'],
         ]);
+        if (!TeamController::exists($d['teamName'])) {
+            return $this->fail(422, 'Choose a team from the list.');
+        }
         $id = (string) Str::ulid();
         DB::table('trip_requests')->insert([
-            'id' => $id, 'team_name' => Clean::text($d['teamName'], 80), 'location' => Clean::text($d['location'], 120),
+            'id' => $id, 'team_name' => $d['teamName'], 'location' => Clean::text($d['location'], 120),
             'start_date' => $d['startDate'], 'end_date' => $d['endDate'], 'requester_id' => $u->id, 'requester_name' => self::nameOf($u),
             'requester_email' => $u->email, 'status' => 'submitted', 'created_at' => now(), 'updated_at' => now(),
         ]);
@@ -194,7 +197,7 @@ class TripController extends Controller
         $u = $this->me($request);
         $t = TripAccess::needView($u, $trip);
         $map = [
-            'name' => ['name', 120, true], 'teamName' => ['team_name', 80, true], 'location' => ['location', 120, true],
+            'name' => ['name', 120, true], 'location' => ['location', 120, true],
             'cyberRationale' => ['cyber_rationale', 2000, false], 'countryRationale' => ['country_rationale', 2000, false],
             'createdByName' => ['created_by_name', 80, false], 'createdByEmail' => ['created_by_email', 254, false],
         ];
@@ -207,6 +210,12 @@ class TripController extends Controller
                     return $this->fail(422, 'This field is required.');
                 }
                 $patch[$col] = $v;
+            } elseif ($key === 'teamName') {
+                // A changed team must come from the list; a trip keeps a team that was later removed.
+                if ($value !== $t->team_name && !TeamController::exists($value)) {
+                    return $this->fail(422, 'Choose a team from the list.');
+                }
+                $patch['team_name'] = $value;
             } elseif ($key === 'startDate' || $key === 'endDate') {
                 if (!Clean::isDate($value)) {
                     return $this->fail(422, 'Enter a valid date.');

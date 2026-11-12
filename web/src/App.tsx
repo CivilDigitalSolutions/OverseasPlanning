@@ -2,6 +2,7 @@ import { signOut } from "firebase/auth";
 import { useEffect } from "react";
 import { Account } from "./Account";
 import { AdminAccounts } from "./AdminAccounts";
+import { AdminTeams } from "./AdminTeams";
 import { EMBLEM_WHITE, WORDMARK_WHITE } from "./brand";
 import { AuthAction, ForgotPassword, SignIn, SignUp, VerifyEmail } from "./Auth";
 import { Icon, Link, Loading, usePath } from "./components";
@@ -64,7 +65,7 @@ function Shell({ session, pathname }: { session: Session; pathname: string }) {
   else if (seg[0] === "requests" && seg[1] && session.isHost) page = <CreateTrip session={session} requestId={seg[1]} />;
   else if (seg[0] === "requests") page = <RequestsPage session={session} requests={requests} />;
   else if (seg[0] === "account") page = <Account session={session} />;
-  else if (seg[0] === "admin") page = <AdminAccounts session={session} />;
+  else if (seg[0] === "admin") page = seg[1] === "teams" ? <AdminTeams session={session} /> : <AdminAccounts session={session} />;
   else if (seg[0] === "notifications") page = <NotificationsPage session={session} list={notifications} />;
   else page = <TripList session={session} status="planning" />;
 
@@ -86,7 +87,7 @@ function Shell({ session, pathname }: { session: Session; pathname: string }) {
         {session.isHost && <span className="badge info">HOST</span>}
         {session.isController && <span className="badge info">Controller</span>}
         <NotificationBell unread={unread} />
-        {session.isAdmin && <Link to="/admin" className="icon-btn"><span className="sr-only">Accounts (settings)</span><span style={{ color: "#fff" }}><Icon name="cog" /></span></Link>}
+        {session.isAdmin && <Link to="/admin" className="icon-btn"><span className="sr-only">Accounts and teams (settings)</span><span style={{ color: "#fff" }}><Icon name="cog" /></span></Link>}
         <Link to="/account" className="icon-btn"><span className="sr-only">Account</span><span style={{ color: "#fff" }}><Icon name="user" /></span></Link>
         <button className="icon-btn" aria-label="Sign out" onClick={() => signOut(auth)}><span style={{ color: "#fff" }}><Icon name="logout" /></span></button>
       </header>

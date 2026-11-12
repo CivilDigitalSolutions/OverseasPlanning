@@ -196,3 +196,16 @@ test("trip phase labels", () => {
   assert.equal(tripPhase(t, "2026-11-15").label, "Ended yesterday — not archived");
   assert.equal(tripPhase(t, "2026-11-18").tone, "warn");
 });
+
+test("teams: validation, natural order and options keep a removed team", async () => {
+  const { validateTeamName, sortTeams, teamOptions } = await import("../src/model.ts");
+  const teams = [{ id: "T101", name: "T101" }, { id: "T2", name: "T2" }, { id: "T10", name: "T10" }];
+  assert.equal(validateTeamName("  ", teams), "Enter a team name.");
+  assert.equal(validateTeamName("t101", teams), "That team already exists.");
+  assert.equal(validateTeamName("T101", teams, "T101"), "");
+  assert.equal(validateTeamName("T/1", teams), "Use letters, numbers, spaces, dots or dashes (up to 40).");
+  assert.equal(validateTeamName("T 102", teams), "");
+  assert.deepEqual(sortTeams(teams).map((t) => t.name), ["T2", "T10", "T101"]);
+  assert.deepEqual(teamOptions(teams, "Old Team"), ["Old Team", "T2", "T10", "T101"]);
+  assert.deepEqual(teamOptions(teams, "T10"), ["T2", "T10", "T101"]);
+});

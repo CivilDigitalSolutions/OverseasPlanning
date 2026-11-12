@@ -72,6 +72,7 @@ server. Health and welfare text is encrypted at the application layer.
 | `agreements` | user_id (no foreign key, so the record outlives a deleted account), terms_version, privacy_version, method, email, ip, user_agent, accepted_at — **append-only** |
 | `role_changes` | user_id, email, changes (json), by_user_id (no foreign keys) — **append-only** |
 | `passkeys` | user_id, credential_id, public_key, counter, transports, label, last_used_at |
+| `teams` | name (unique ignoring case), created_by — Administrators only |
 | `trip_requests` | team_name, start_date, end_date, location, requester_id, status, decline_reason, trip_id, decided_by |
 | `trips` | name, team_name, location, start/end_date, status, cyber/country risk + rationale, dip_*, roles (jsonb: role → name, email, user id), extra_access_uids / extra_access_emails (jsonb), requester_id, created_by (+name/email), updated_by (+name) |
 | `trip_members` | trip_id, user_id, name, email, reasons (json), added_at — **written only by `App\Services\Membership`** |

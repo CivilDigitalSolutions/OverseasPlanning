@@ -4,7 +4,7 @@
  */
 import { onIdTokenChanged, type User } from "firebase/auth";
 import {
-  addDoc, collection, deleteDoc, deleteField, doc, getDoc, getDocs, limit, onSnapshot, orderBy, query, serverTimestamp, setDoc, updateDoc, where,
+  addDoc, collection, deleteDoc, deleteField, doc, getDoc, getDocs, limit, onSnapshot, orderBy, query, serverTimestamp, setDoc, updateDoc, where, writeBatch,
   type DocumentData, type DocumentSnapshot, type Timestamp,
 } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
@@ -16,7 +16,7 @@ import {
   EMPTY_DEBRIEF, MAX_ATTACHMENT_BYTES, PRIVACY_VERSION, TERMS_VERSION, safeFileName,
   REQUEST_KINDS, type ChatMessage, type Contact, type ContactInput, type TripContact, type Debrief, type FinanceEntry, type RequestKind, toRequestStatus,
   type VaccinationDeclaration, type VaccineRecord, type RequestInput, type RoleHolder, type TlRequest, type Trip, type TripRequest,
-  type TripRoleKey, type TripStatus,
+  type TripRoleKey, type TripStatus, type Team, cleanTeamName, sortTeams,
 } from "./model";
 
 export const call = async <T,>(name: string, data: unknown = {}): Promise<T> =>
@@ -490,6 +490,29 @@ export const removeTripContact = (tripId: string, id: string) => deleteDoc(doc(d
 // ---- HOST administration ------------------------------------------------------------------------
 
 export const setRole = (email: string, role: "host" | "controller", on: boolean) => call<{ uid: string }>("setRole", { email, role, on });
+
+// ---- Teams (owner, 2026-11-12): the team dropdown; administrators manage the list ----------------
+// teams/{name}: the document id IS the name, so the rules can check a request's team exists.
+
+export function useTeams(): Team[] | null {
+  const [list, setList] = useState<Team[] | null>(null);
+  useEffect(() => onSnapshot(collection(db, "teams"), (snap) =>
+    setList(sortTeams(snap.docs.map((d) => ({ id: d.id, name: str(d.get("name")) || d.id })))), () => setList([])), []);
+  return list;
+}
+export const addTeam = (s: Session, name: string) => {
+  const n = cleanTeamName(name);
+  return setDoc(doc(db, "teams", n), { name: n, createdBy: s.uid, createdAt: serverTimestamp() });
+};
+/** Rename = new document + delete the old one (ids are names). Trips keep the name they were given. */
+export async function renameTeam(s: Session, team: Team, name: string) {
+  const n = cleanTeamName(name);
+  const b = writeBatch(db);
+  b.set(doc(db, "teams", n), { name: n, createdBy: s.uid, createdAt: serverTimestamp() });
+  if (n !== team.id) b.delete(doc(db, "teams", team.id));
+  await b.commit();
+}
+export const deleteTeam = (id: string) => deleteDoc(doc(db, "teams", id));
 
 // ---- Directory (owner, 2026-11-10): people pickers search everyone signed up ---------------------
 

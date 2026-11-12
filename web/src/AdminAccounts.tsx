@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Badge, Checkbox, Confirm, Empty, Icon, Loading, Modal, Notice, TextField, errorText } from "./components";
 import { EMAIL_RE } from "./model";
+import { AdminTabs } from "./AdminTeams";
 import { personMatches } from "./PeoplePicker";
 import { createAccount, deleteManagedAccount, listAccounts, setAccountRoles, type ManagedAccount, type RoleProfiles, type Session } from "./store";
 
@@ -36,6 +37,7 @@ export function AdminAccounts({ session }: { session: Session }) {
   const list = accounts?.filter((a) => !q.trim() || personMatches(a, q)) ?? null;
   return (
     <>
+      <AdminTabs current="accounts" />
       <div className="page-head">
         <h1>Accounts</h1><span className="spacer" />
         <button className="btn" onClick={() => setCreating(true)}><Icon name="plus" size={16} /> New account</button>
