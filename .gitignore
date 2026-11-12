@@ -12,3 +12,4 @@ api/storage/*.key
 reports/
 api/tools/phpstan/vendor/
 api/tools/phpstan/composer.lock
+web/dist-pages/

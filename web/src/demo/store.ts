@@ -12,6 +12,8 @@ import {
   type Team, cleanTeamName, sortTeams, pendingLabel,
 } from "../model";
 import { DELETE, be, type QuerySpec, type Snap } from "./backend";
+import { saveFile } from "./download";
+import { deleteFile, getFile, putFile } from "./localFiles";
 import { computeAccess, flightLabel, type AccessInput, type Person } from "../membership";
 
 const now = () => Date.now();
@@ -419,9 +421,11 @@ export const useAttachments = (tripId: string) => useColl(`trips/${tripId}/attac
 export async function uploadAttachment(s: Session, tripId: string, file: File, onProgress: (pct: number) => void) {
   if (file.size > Math.min(MAX_ATTACHMENT_BYTES, 20 * 1024 * 1024)) throw new Error("That file is larger than 20 MB.");
   const assets = be().assets;
-  if (!assets) throw new Error("File uploads aren't available for you on this demo.");
   onProgress(10);
-  const { id, url } = await assets.upload(file);
+  // On claude.ai: the artifact's file store. Elsewhere (GitHub Pages): this browser's IndexedDB.
+  let id: string, url: string;
+  if (assets) ({ id, url } = await assets.upload(file));
+  else { id = `idb-${be().newId()}`; url = "local"; await putFile(id, file); }
   onProgress(100);
   await be().set(`trips/${tripId}/attachments/${be().newId()}`, {
     name: file.name.slice(0, 200), path: `${id} ${url}`, size: file.size, contentType: (file.type || "application/octet-stream").slice(0, 120),
@@ -434,15 +438,22 @@ const assetOf = (a: Attachment) => { const [id, ...rest] = a.path.split(" "); re
 export const attachmentUrl = async (a: Attachment) => assetOf(a).url;
 
 export async function openAttachment(a: Attachment) {
-  const downloads = be().downloads;
-  if (!downloads) throw new Error("Downloads aren't available here.");
-  const res = await fetch(assetOf(a).url);
-  if (!res.ok) throw new Error("That file couldn't be fetched.");
-  await downloads.save({ filename: a.name, data: await res.blob() });
+  const { id, url } = assetOf(a);
+  let blob: Blob | undefined;
+  if (id.startsWith("idb-")) blob = await getFile(id);
+  else {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error("That file couldn't be fetched.");
+    blob = await res.blob();
+  }
+  if (!blob) throw new Error("That file is no longer in this browser.");
+  await saveFile(a.name, blob);
 }
 
 export async function deleteAttachment(tripId: string, a: Attachment) {
-  await be().assets?.delete(assetOf(a).id).catch(() => undefined);
+  const { id } = assetOf(a);
+  if (id.startsWith("idb-")) await deleteFile(id).catch(() => undefined);
+  else await be().assets?.delete(id).catch(() => undefined);
   await be().del(`trips/${tripId}/attachments/${a.id}`);
 }
 

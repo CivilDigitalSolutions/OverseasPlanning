@@ -1,7 +1,8 @@
-/** DEMO: files are handed to the artifact's download capability (the viewer confirms the save). */
+/** DEMO: files go to the artifact's download capability on claude.ai, else a normal browser download. */
 import { be } from "./backend";
+import { browserDownload } from "./localFiles";
 export async function saveFile(filename: string, blob: Blob): Promise<void> {
   const d = be().downloads;
-  if (!d) throw new Error("Downloads aren't available here.");
-  await d.save({ filename, data: blob });
+  if (d) { await d.save({ filename, data: blob }); return; }
+  browserDownload(filename, blob);
 }

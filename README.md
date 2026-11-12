@@ -30,6 +30,23 @@ cd api && php artisan test                         # 42 tests, needs the voyager
 scripts/security/all.sh                            # tests, audits, Semgrep, Larastan
 ```
 
+## Client demo on GitHub Pages
+
+**https://civildigitalsolutions.github.io/OverseasPlanning/** — published by
+`.github/workflows/pages.yml` on every push to the working branch (or `main`) that touches `web/`,
+and on demand from the repository's Actions tab ("pages-demo" → Run workflow).
+
+- It is the same app with every screen, running **entirely in the visitor's browser**: no Firebase,
+  no server, no real data. Each visitor signs up with any name and email (confirmation is simulated)
+  and their trips, attachments (IndexedDB) and settings stay in that browser only. Clear the site's
+  data in the browser to start again.
+- The yellow strip at the top lets one person try every role (HOST, Controller, SPC,
+  Administrator). Sample teams T101–T105 are created on first use.
+- PDF export and attachment downloads use the browser's normal download.
+- The page asks search engines not to index it, but the URL itself is public: anyone with the
+  link can open the demo. Never enter real trip or personal data into it.
+- Build locally: `cd web && npm run build:pages` → `web/dist-pages/`.
+
 ## Demo build (claude.ai artifact)
 
 `cd web && npm run build:demo` builds `web/dist-demo/index.html`: the same screens with the

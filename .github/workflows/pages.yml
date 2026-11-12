@@ -1,0 +1,45 @@
+# Publishes the client DEMO of Voyager Trip Manager to GitHub Pages.
+# The demo runs entirely in the visitor's browser (data kept in that browser only):
+# no Firebase, no server, no real data. Build locally with: cd web && npm run build:pages
+name: pages-demo
+on:
+  push:
+    branches: [claude/overseas-trip-planning-pwa-tyd8sd, main]
+    paths: ["web/**", ".github/workflows/pages.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "22", cache: npm, cache-dependency-path: web/package-lock.json }
+      - run: npm ci
+        working-directory: web
+      - name: Unit tests
+        run: npm test
+        working-directory: web
+      - name: Build the demo for Pages
+        run: npm run build:pages
+        working-directory: web
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with: { path: web/dist-pages }
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

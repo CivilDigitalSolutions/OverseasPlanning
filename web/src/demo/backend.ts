@@ -106,13 +106,10 @@ function localBackend(uid: string, downloads: Downloads | null): Backend {
     .filter(([p]) => p.startsWith(path + "/") && !p.slice(path.length + 1).includes("/"))
     .map(([p, data]) => ({ id: p.slice(path.length + 1), data: { ...data }, pending: false }));
   const listQ = (path: string, q: QuerySpec) => order(inColl(path).filter((s) => matches(s.data, q)), q);
-  const blobs = new Map<string, Blob>();
   return {
-    mode: "local", uid, downloads,
-    assets: {
-      upload: async (b) => { const id = rid(); blobs.set(id, b); return { id, url: URL.createObjectURL(b) }; },
-      delete: async (id) => { blobs.delete(id); },
-    },
+    // No file store: attachments go to this browser's IndexedDB instead (demo/localFiles.ts), so
+    // they survive a reload — e.g. on GitHub Pages.
+    mode: "local", uid, downloads, assets: null,
     watchCollection: (path, q, cb) => {
       const l = () => cb(listQ(path, q));
       listeners.add(l); queueMicrotask(l);
